@@ -1636,6 +1636,12 @@
         }
 
         function save() {
+            // 同期中は保存しない（データ消失防止）
+            if (isSyncing) {
+                console.log('同期中のため保存スキップ');
+                return;
+            }
+            
             saveToLocal();
             
             if (saveTimer) clearTimeout(saveTimer);
