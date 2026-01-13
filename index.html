@@ -1533,6 +1533,22 @@
                 const data = await response.json();
                 
                 if (data && data.success) {
+                    // サーバーにデータがあるか確認
+                    const serverHasTaskData = data.tasks && Object.keys(data.tasks).some(col => data.tasks[col] && data.tasks[col].length > 0);
+                    const serverHasHabitData = data.habits && data.habits.length > 0;
+                    
+                    // ローカルにデータがあるか確認
+                    const localHasTaskData = Object.keys(tasks).some(col => tasks[col] && tasks[col].length > 0);
+                    const localHasHabitData = habits && habits.length > 0;
+                    
+                    // サーバーが空でローカルにデータがある場合は、ローカルを優先してサーバーに保存
+                    if (!serverHasTaskData && !serverHasHabitData && (localHasTaskData || localHasHabitData)) {
+                        console.log('サーバーが空、ローカルデータをサーバーに保存');
+                        updateSyncBadge('syncing', '復元中...');
+                        await syncToServer();
+                        return;
+                    }
+                    
                     let needsRender = false;
                     if (data.tasks && JSON.stringify(data.tasks) !== JSON.stringify(tasks)) {
                         tasks = data.tasks;
