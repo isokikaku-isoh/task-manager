@@ -1482,6 +1482,7 @@
         let statsTab = 'overview';
         let confirmCb = null;
         let diaryDate = new Date(); // 日記の現在表示日
+        let isSyncing = false; // 同期中フラグ
 
         // ===== 初期化 =====
         document.addEventListener('DOMContentLoaded', () => {
@@ -1492,8 +1493,17 @@
             setupInputs();
             renderHabitTable();
             
-            // バックグラウンドでサーバー同期
-            syncFromServer();
+            // ローカルにデータがあるかチェック
+            const localHasData = Object.keys(tasks).some(col => tasks[col] && tasks[col].length > 0) 
+                              || (habits && habits.length > 0);
+            
+            if (localHasData) {
+                // ローカルにデータあり → 即使える、裏で同期
+                syncFromServerQuiet();
+            } else {
+                // ローカルが空 → 同期完了まで待つ
+                syncFromServerBlocking();
+            }
             
             setTimeout(scrollToToday, 200);
             
@@ -1512,13 +1522,12 @@
         const esc = t => { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; };
 
         // ===== ストレージ =====
-        // GAS APIのURL（デプロイ後に設定）
         const API_URL = 'https://script.google.com/macros/s/AKfycbyFtn1OxgOQaMPEJzDbIkj0bZTNHj46T3h_9s4AjtQ4GKgMwXh524pt7O8wgNawlKVNLw/exec';
         let saveTimer = null;
 
-        // サーバーからバックグラウンド同期
-        async function syncFromServer() {
-            document.getElementById('loading').classList.remove('hidden');
+        // 静かに同期（ローカルにデータがある場合）
+        async function syncFromServerQuiet() {
+            isSyncing = true;
             updateSyncBadge('syncing', '同期中...');
             
             try {
@@ -1526,12 +1535,11 @@
                 const data = await response.json();
                 
                 if (data && data.success) {
-                    // サーバーにデータがあるか確認
-                    const serverHasTaskData = data.tasks && Object.keys(data.tasks).some(col => data.tasks[col] && data.tasks[col].length > 0);
-                    const serverHasHabitData = data.habits && data.habits.length > 0;
+                    const serverHasData = (data.tasks && Object.keys(data.tasks).some(col => data.tasks[col] && data.tasks[col].length > 0))
+                                       || (data.habits && data.habits.length > 0);
                     
-                    // サーバーにデータがあれば、サーバーを優先
-                    if (serverHasTaskData || serverHasHabitData) {
+                    if (serverHasData) {
+                        // サーバーの方が新しいデータがあれば更新
                         tasks = data.tasks || {};
                         if (data.columns && data.columns.length > 0) columns = data.columns;
                         habits = data.habits || [];
@@ -1544,28 +1552,51 @@
                         renderKanban();
                         renderHabitTable();
                         saveToLocal();
-                        updateSyncBadge('success', '同期完了');
                     } else {
-                        // サーバーが空の場合、ローカルにデータがあればサーバーに保存
-                        const localHasTaskData = Object.keys(tasks).some(col => tasks[col] && tasks[col].length > 0);
-                        const localHasHabitData = habits && habits.length > 0;
-                        
-                        if (localHasTaskData || localHasHabitData) {
-                            console.log('サーバーが空、ローカルデータをサーバーに保存');
-                            updateSyncBadge('syncing', '復元中...');
-                            await syncToServer();
-                        } else {
-                            updateSyncBadge('success', '同期完了');
-                        }
+                        // サーバーが空ならローカルデータをサーバーに保存
+                        await syncToServer();
                     }
-                } else {
-                    throw new Error(data.error || 'Load failed');
+                    updateSyncBadge('success', '同期完了');
+                }
+            } catch(e) {
+                console.error('Sync error:', e);
+                updateSyncBadge('error', 'オフライン');
+            } finally {
+                isSyncing = false;
+            }
+        }
+
+        // ブロッキング同期（ローカルが空の場合）
+        async function syncFromServerBlocking() {
+            isSyncing = true;
+            document.getElementById('loading').classList.remove('hidden');
+            updateSyncBadge('syncing', '読込中...');
+            
+            try {
+                const response = await fetch(API_URL + '?action=load');
+                const data = await response.json();
+                
+                if (data && data.success) {
+                    tasks = data.tasks || {};
+                    if (data.columns && data.columns.length > 0) columns = data.columns;
+                    habits = data.habits || [];
+                    habitScores = data.habitScores || {};
+                    habitNotes = data.habitNotes || {};
+                    dailyScores = data.dailyScores || {};
+                    if (data.settings && data.settings.theme) theme = data.settings.theme;
+                    
+                    applyTheme();
+                    renderKanban();
+                    renderHabitTable();
+                    saveToLocal();
+                    updateSyncBadge('success', '同期完了');
                 }
             } catch(e) {
                 console.error('Sync error:', e);
                 updateSyncBadge('error', 'オフライン');
             } finally {
                 document.getElementById('loading').classList.add('hidden');
+                isSyncing = false;
             }
         }
 
