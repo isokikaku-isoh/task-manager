@@ -1493,7 +1493,7 @@
             renderHabitTable();
             
             // バックグラウンドでサーバー同期
-            if (API_URL !== 'YOUR_GAS_API_URL_HERE') {
+            if (API_URL !== 'https://script.google.com/macros/s/AKfycbyFtn1OxgOQaMPEJzDbIkj0bZTNHj46T3h_9s4AjtQ4GKgMwXh524pt7O8wgNawlKVNLw/exec') {
                 syncFromServer();
             }
             
@@ -1515,12 +1515,12 @@
 
         // ===== ストレージ =====
         // GAS APIのURL（デプロイ後に設定）
-        const API_URL = 'YOUR_GAS_API_URL_HERE';
+        const API_URL = 'https://script.google.com/macros/s/AKfycbyFtn1OxgOQaMPEJzDbIkj0bZTNHj46T3h_9s4AjtQ4GKgMwXh524pt7O8wgNawlKVNLw/exec';
         let saveTimer = null;
 
         // サーバーからバックグラウンド同期
         async function syncFromServer() {
-            if (API_URL === 'YOUR_GAS_API_URL_HERE') {
+            if (API_URL === 'https://script.google.com/macros/s/AKfycbyFtn1OxgOQaMPEJzDbIkj0bZTNHj46T3h_9s4AjtQ4GKgMwXh524pt7O8wgNawlKVNLw/exec') {
                 console.log('API URLが未設定です');
                 return;
             }
@@ -1670,7 +1670,7 @@
 
         // 個別保存（リアルタイム同期用）
         async function saveHabitScore(date, habitId, score) {
-            if (API_URL === 'YOUR_GAS_API_URL_HERE') return;
+            if (API_URL === 'https://script.google.com/macros/s/AKfycbyFtn1OxgOQaMPEJzDbIkj0bZTNHj46T3h_9s4AjtQ4GKgMwXh524pt7O8wgNawlKVNLw/exec') return;
             
             try {
                 await fetch(API_URL, {
