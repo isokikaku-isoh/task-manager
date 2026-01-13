@@ -1,0 +1,18 @@
+{
+  "name": "タスク管理",
+  "short_name": "タスク",
+  "description": "TODOリストと習慣トラッカー",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f2f5ff",
+  "theme_color": "#f49097",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23f49097' width='100' height='100' rx='20'/><text x='50%' y='55%' dominant-baseline='middle' text-anchor='middle' font-size='50'>📋</text></svg>",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

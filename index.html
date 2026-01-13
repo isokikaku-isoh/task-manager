@@ -1,0 +1,3245 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="タスク管理">
+    <meta name="theme-color" content="#f49097">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23f49097' width='100' height='100' rx='20'/><text x='50%' y='55%' dominant-baseline='middle' text-anchor='middle' font-size='50'>📋</text></svg>">
+    <title>タスク管理</title>
+
+    <style>
+        :root {
+            --color-primary: #f49097;
+            --color-secondary: #dfb2f4;
+            --color-accent: #55d6c2;
+            --color-highlight: #f5e960;
+            --color-bg: #f2f5ff;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body { height: 100%; overflow: hidden; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Hiragino Sans', sans-serif;
+            background: linear-gradient(135deg, var(--color-bg) 0%, #ffffff 100%);
+            color: #333;
+        }
+
+        .app { display: flex; flex-direction: column; height: 100dvh; }
+
+        /* メインタブ */
+        .main-tabs {
+            display: flex;
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid #e5e7eb;
+            flex-shrink: 0;
+        }
+
+        .main-tab {
+            flex: 1;
+            padding: 14px;
+            border: none;
+            background: transparent;
+            font-size: 14px;
+            font-weight: 600;
+            color: #9ca3af;
+            cursor: pointer;
+            position: relative;
+            transition: color 0.2s;
+        }
+
+        .main-tab.active { color: var(--color-primary); }
+        .main-tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 20%;
+            right: 20%;
+            height: 3px;
+            background: var(--color-primary);
+            border-radius: 3px 3px 0 0;
+        }
+
+        .main-tab:nth-child(2).active { color: var(--color-accent); }
+        .main-tab:nth-child(2).active::after { background: var(--color-accent); }
+
+        .tab-content { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+        .tab-content.active { display: flex; }
+
+        /* ===== TODO ===== */
+        .todo-header {
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            padding: 12px 16px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .todo-header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .sync-badge {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 10px;
+            background: #e5e7eb;
+            color: #666;
+        }
+
+        .sync-badge.syncing { background: #fef3c7; color: #92400e; }
+        .sync-badge.success { background: #d1fae5; color: #065f46; }
+        .sync-badge.error { background: #fee2e2; color: #991b1b; }
+
+        .task-count {
+            font-size: 11px;
+            background: #f3f4f6;
+            padding: 4px 8px;
+            border-radius: 12px;
+            color: #666;
+            margin-left: 8px;
+        }
+
+        .icon-btn {
+            width: 36px;
+            height: 36px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .icon-btn.theme { background: rgba(223,178,244,0.2); color: var(--color-secondary); }
+        .icon-btn.add-col { border: 2px dashed #d1d5db; background: transparent; color: #9ca3af; }
+
+        .pc-input { display: none; gap: 10px; }
+        @media (min-width: 640px) { .pc-input { display: flex; } }
+
+        .task-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            font-size: 16px;
+            outline: none;
+        }
+
+        .task-input:focus { border-color: var(--color-primary); }
+
+        .add-btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            color: white;
+            background: var(--color-primary);
+            cursor: pointer;
+        }
+
+        .add-btn:disabled { opacity: 0.4; }
+        .add-btn.ready { background: var(--color-accent); }
+
+        /* カンバン */
+        .kanban {
+            flex: 1;
+            display: flex;
+            gap: 16px;
+            padding: 16px;
+            overflow-x: auto;
+            overflow-y: hidden;
+        }
+
+        .column {
+            flex-shrink: 0;
+            width: 280px;
+            background: white;
+            border-radius: 14px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            display: flex;
+            flex-direction: column;
+            max-height: 100%;
+            transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+
+        @media (min-width: 640px) { .column { width: 320px; } }
+
+        .column.drag-over { 
+            box-shadow: 0 0 0 3px var(--color-accent), 0 8px 24px rgba(85, 214, 194, 0.3); 
+            background: rgba(85, 214, 194, 0.08);
+            transform: scale(1.02);
+        }
+
+        .column-header {
+            padding: 12px 14px;
+            border-radius: 14px 14px 0 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .column-title { font-weight: 600; font-size: 14px; }
+        .column-count { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: rgba(255,255,255,0.25); margin-left: 8px; }
+
+        .column-delete {
+            width: 24px;
+            height: 24px;
+            border: none;
+            border-radius: 6px;
+            background: rgba(255,255,255,0.2);
+            cursor: pointer;
+            opacity: 0.7;
+        }
+
+        .task-list { flex: 1; padding: 10px; overflow-y: auto; min-height: 150px; transition: background 0.2s; }
+        .column.drag-over .task-list { background: rgba(85, 214, 194, 0.05); }
+
+        .task-card {
+            background: white;
+            border: 2px solid #f3f4f6;
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 8px;
+            cursor: grab;
+            position: relative;
+            transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
+        }
+
+        .task-card:active { cursor: grabbing; }
+
+        .task-card.important { border-color: var(--color-primary); background: linear-gradient(135deg, rgba(244,144,151,0.08), white); }
+        .task-card.dragging { 
+            opacity: 0.9; 
+            transform: rotate(4deg) scale(1.05); 
+            box-shadow: 0 12px 28px rgba(0,0,0,0.2);
+            z-index: 100;
+        }
+        .task-card.drag-over-top {
+            border-top: 3px solid var(--color-accent);
+            margin-top: -1px;
+        }
+        .task-card.drag-over-bottom {
+            border-bottom: 3px solid var(--color-accent);
+            margin-bottom: -1px;
+        }
+        .task-card.done-task { opacity: 0.6; }
+        .task-card.done-task .task-title { text-decoration: line-through; color: #9ca3af; }
+
+        .days-badge {
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            font-size: 10px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+
+        .task-title { font-size: 13px; font-weight: 500; line-height: 1.4; padding-right: 20px; }
+        .task-meta { display: flex; gap: 4px; margin-top: 8px; color: #9ca3af; font-size: 11px; }
+
+        .task-actions { display: flex; gap: 2px; margin-top: 4px; padding-top: 4px; border-top: 1px solid #f3f4f6; align-items: center; }
+
+        .task-move-btns { display: flex; gap: 2px; }
+
+        .task-move-btn {
+            width: 28px;
+            height: 24px;
+            border: 1px solid #e5e7eb;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+            color: #666;
+            font-size: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .task-move-btn:hover:not(:disabled) { background: var(--color-accent); color: white; border-color: var(--color-accent); }
+        .task-move-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        .task-action-btn {
+            width: 24px;
+            height: 20px;
+            border: none;
+            border-radius: 4px;
+            background: transparent;
+            cursor: pointer;
+            color: #d1d5db;
+            font-size: 11px;
+        }
+
+        .task-action-btn.star-btn.active { color: var(--color-primary); background: rgba(244,144,151,0.15); }
+        .task-action-btn.complete-btn { margin-left: auto; }
+        .task-action-btn.complete-btn:hover { color: white; background: var(--color-accent); }
+
+        /* スマホでは★✓を非表示 */
+        @media (max-width: 639px) {
+            .task-action-btn.pc-only { display: none; }
+        }
+
+        .empty-column { display: flex; flex-direction: column; align-items: center; padding: 40px 20px; color: #d1d5db; }
+        .empty-icon { width: 48px; height: 48px; border-radius: 50%; background: #f9fafb; display: flex; align-items: center; justify-content: center; margin-bottom: 8px; }
+
+        .mobile-input { background: rgba(255,255,255,0.95); border-top: 1px solid #e5e7eb; }
+        @media (min-width: 640px) { .mobile-input { display: none; } }
+
+        .mobile-input-collapsed {
+            padding: 14px 16px;
+            text-align: center;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--color-primary);
+            cursor: pointer;
+        }
+
+        .mobile-input-collapsed:active { background: #f9fafb; }
+
+        .mobile-input-expanded {
+            padding: 12px;
+        }
+
+        .mobile-input-expanded.hidden { display: none; }
+
+        .mobile-input-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .mobile-input-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .mobile-input-close {
+            width: 28px;
+            height: 28px;
+            border: none;
+            border-radius: 6px;
+            background: #f3f4f6;
+            font-size: 14px;
+            cursor: pointer;
+            color: #666;
+        }
+
+        .mobile-col-tabs {
+            display: flex;
+            gap: 6px;
+            overflow-x: auto;
+            padding-bottom: 10px;
+        }
+
+        .mobile-col-tab {
+            flex-shrink: 0;
+            padding: 8px 14px;
+            border: 2px solid #e5e7eb;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            background: white;
+            color: #666;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .mobile-col-tab.active {
+            border-color: var(--color-primary);
+            background: var(--color-primary);
+            color: white;
+        }
+
+        .mobile-input-row {
+            display: flex;
+            gap: 8px;
+        }
+
+        .mobile-input-row .task-input { flex: 1; padding: 12px 14px; }
+
+        /* ===== 習慣トラッカー ===== */
+        .habit-header {
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            padding: 12px 16px;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .habit-btn {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .habit-btn.today { background: #f3f4f6; color: #666; }
+        .habit-btn.stats { background: rgba(85,214,194,0.2); color: var(--color-accent); }
+        .habit-btn.add { background: var(--color-accent); color: white; }
+        .habit-btn.more { background: #f3f4f6; color: #666; }
+
+        .habit-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            margin: 12px;
+            border-radius: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            overflow: hidden;
+        }
+
+        .habit-table-head {
+            display: flex;
+            border-bottom: 2px solid #e5e7eb;
+            background: #fafafa;
+        }
+
+        .habit-date-col { flex-shrink: 0; width: 88px; padding: 10px 8px; font-size: 11px; font-weight: 600; color: #666; border-right: 1px solid #e5e7eb; }
+        @media (min-width: 640px) { .habit-date-col { width: 110px; } }
+
+        .habit-score-col-head {
+            flex-shrink: 0;
+            width: 70px;
+            padding: 10px 4px;
+            font-size: 10px;
+            font-weight: 600;
+            color: #666;
+            border-right: 1px solid #e5e7eb;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .habit-daily-scores {
+            flex-shrink: 0;
+            width: 70px;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            padding: 4px;
+            border-right: 1px solid #e5e7eb;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .daily-score {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 58px;
+            height: 18px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 700;
+            color: #333;
+        }
+
+        .daily-score.day::before { content: '☀'; font-size: 8px; margin-right: 2px; }
+        .daily-score.night::before { content: '🌙'; font-size: 7px; margin-right: 2px; }
+
+        .habit-items-head { flex: 1; display: flex; overflow-x: hidden; }
+
+        .habit-item-col { flex-shrink: 0; width: 52px; padding: 8px 4px; text-align: center; border-right: 1px solid #f3f4f6; cursor: grab; user-select: none; transition: transform 0.15s, background 0.15s; }
+        .habit-item-col:last-child { border-right: none; }
+        .habit-item-col:active { cursor: grabbing; }
+        .habit-item-col.dragging { opacity: 0.5; background: #e5e7eb; transform: scale(0.95); }
+        .habit-item-col.drag-over { background: rgba(85,214,194,0.3); transform: scale(1.05); }
+        .habit-emoji { font-size: 18px; pointer-events: none; }
+        .habit-name { font-size: 9px; color: #666; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+
+        .habit-table-body { flex: 1; overflow-y: auto; }
+
+        .habit-month-div {
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            padding: 8px 12px;
+            font-size: 13px;
+            font-weight: 700;
+            border-bottom: 2px solid var(--color-primary);
+        }
+
+        .month-bg-1 { background: linear-gradient(90deg, #fef2f2, white); }
+        .month-bg-2 { background: linear-gradient(90deg, #fdf2f8, white); }
+        .month-bg-3 { background: linear-gradient(90deg, #faf5ff, white); }
+        .month-bg-4 { background: linear-gradient(90deg, #f0fdf4, white); }
+        .month-bg-5 { background: linear-gradient(90deg, #ecfdf5, white); }
+        .month-bg-6 { background: linear-gradient(90deg, #f0fdfa, white); }
+        .month-bg-7 { background: linear-gradient(90deg, #ecfeff, white); }
+        .month-bg-8 { background: linear-gradient(90deg, #f0f9ff, white); }
+        .month-bg-9 { background: linear-gradient(90deg, #eff6ff, white); }
+        .month-bg-10 { background: linear-gradient(90deg, #fefce8, white); }
+        .month-bg-11 { background: linear-gradient(90deg, #fff7ed, white); }
+        .month-bg-12 { background: linear-gradient(90deg, #fef2f2, white); }
+
+        .habit-row { display: flex; border-bottom: 1px solid #f3f4f6; }
+        .habit-row:hover { background: #fafafa; }
+        .habit-row.today { background: #fefce8; }
+        .habit-row.weekend { background: rgba(254,202,202,0.15); }
+
+        .habit-date-cell {
+            flex-shrink: 0;
+            width: 88px;
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            border-right: 1px solid #e5e7eb;
+            font-size: 13px;
+        }
+
+        @media (min-width: 640px) { .habit-date-cell { width: 110px; } }
+
+        .day-name { font-size: 10px; padding: 2px 4px; border-radius: 4px; color: #666; }
+        .habit-row.weekend .day-name { color: #ef4444; }
+        .date-num { font-weight: 500; color: #333; }
+        .habit-row.today .date-num { color: #ca8a04; font-weight: 700; }
+        .today-badge { font-size: 9px; background: #fbbf24; color: #78350f; padding: 1px 5px; border-radius: 8px; font-weight: 600; margin-left: auto; }
+
+        .habit-scores-cell { flex: 1; display: flex; overflow-x: auto; scroll-behavior: auto; -webkit-overflow-scrolling: touch; }
+        .habit-scores-cell::-webkit-scrollbar { display: none; }
+
+        .habit-score-cell { flex-shrink: 0; width: 52px; padding: 6px 4px; display: flex; align-items: center; justify-content: center; border-right: 1px solid #f3f4f6; }
+        .habit-score-cell:last-child { border-right: none; }
+
+        /* 表示専用のチェックマーク */
+        .check-display {
+            width: 36px;
+            height: 36px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: 700;
+            background: white;
+            color: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .check-display.done { 
+            background: var(--color-accent); 
+            border-color: var(--color-accent); 
+            color: white; 
+        }
+
+        .check-btn {
+            width: 36px;
+            height: 36px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: 700;
+            cursor: pointer;
+            background: white;
+            color: transparent;
+            transition: all 0.15s;
+        }
+
+        .check-btn:hover { border-color: var(--color-accent); transform: scale(1.1); }
+        .check-btn.done { 
+            background: var(--color-accent); 
+            border-color: var(--color-accent); 
+            color: white; 
+        }
+
+        .score-btn {
+            width: 36px;
+            height: 36px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .score-btn:hover { transform: scale(1.1); }
+
+        /* 習慣テーブルのヘッダースクロール */
+        .habit-items-head { flex: 1; display: flex; overflow-x: auto; scroll-behavior: auto; -webkit-overflow-scrolling: touch; }
+        .habit-items-head::-webkit-scrollbar { display: none; }
+
+        /* 習慣が無い時 */
+        .habit-empty {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #9ca3af;
+            padding: 40px;
+        }
+
+        .habit-empty-icon { font-size: 48px; margin-bottom: 12px; }
+        .habit-empty-text { font-size: 14px; margin-bottom: 16px; }
+
+        /* ===== モーダル ===== */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.2s;
+        }
+
+        @media (min-width: 640px) { .modal-overlay { align-items: center; padding: 20px; } }
+
+        .modal-overlay.active { opacity: 1; visibility: visible; }
+
+        .modal {
+            background: white;
+            border-radius: 20px 20px 0 0;
+            width: 100%;
+            max-height: 90vh;
+            overflow: hidden;
+            transform: translateY(100%);
+            transition: transform 0.3s;
+            display: flex;
+            flex-direction: column;
+        }
+
+        @media (min-width: 640px) { .modal { border-radius: 20px; max-width: 480px; transform: translateY(20px) scale(0.95); } }
+
+        .modal-overlay.active .modal { transform: translateY(0) scale(1); }
+
+        .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #f3f4f6; }
+        .modal-title { font-size: 17px; font-weight: 600; }
+        .modal-close { width: 32px; height: 32px; border: none; border-radius: 8px; background: #f3f4f6; cursor: pointer; color: #9ca3af; }
+
+        .modal-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
+        .modal-footer { padding: 16px 20px; border-top: 1px solid #f3f4f6; }
+
+        .form-group { margin-bottom: 16px; }
+        .form-label { display: block; font-size: 13px; font-weight: 500; color: #666; margin-bottom: 6px; }
+        .form-input { width: 100%; padding: 12px 14px; border: 2px solid #e5e7eb; border-radius: 10px; font-size: 15px; outline: none; }
+        .form-input:focus { border-color: var(--color-primary); }
+
+        .btn-full { width: 100%; padding: 14px; border: none; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer; }
+        .btn-primary { background: var(--color-primary); color: white; }
+        .btn-accent { background: var(--color-accent); color: white; }
+        .btn-secondary { background: #f3f4f6; color: #666; }
+        .btn-danger { background: white; color: #ef4444; border: 2px solid #fecaca; }
+        .btn-row { display: flex; gap: 12px; }
+        .btn-row .btn-full { flex: 1; }
+
+        .emoji-grid { display: flex; gap: 8px; flex-wrap: wrap; }
+        .emoji-btn { width: 44px; height: 44px; border: 2px solid transparent; border-radius: 10px; background: #f3f4f6; font-size: 22px; cursor: pointer; }
+        .emoji-btn.selected { border-color: var(--color-secondary); background: rgba(223,178,244,0.2); }
+
+        .score-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+        .score-option { aspect-ratio: 1; border: none; border-radius: 12px; font-size: 20px; font-weight: 700; cursor: pointer; }
+        .score-option:hover { transform: scale(1.05); }
+        .score-option.selected { box-shadow: 0 0 0 3px var(--color-primary); }
+
+        /* 確認ダイアログ */
+        .confirm-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 1500; opacity: 0; visibility: hidden; transition: all 0.2s; }
+        .confirm-backdrop.active { opacity: 1; visibility: visible; }
+        .confirm-dialog { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.9); background: white; border-radius: 16px; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.2); z-index: 1600; min-width: 280px; text-align: center; opacity: 0; visibility: hidden; transition: all 0.2s; }
+        .confirm-dialog.active { opacity: 1; visibility: visible; transform: translate(-50%, -50%) scale(1); }
+        .confirm-dialog h3 { font-size: 16px; margin-bottom: 8px; }
+        .confirm-dialog p { font-size: 14px; color: #666; margin-bottom: 20px; }
+        .confirm-btns { display: flex; gap: 12px; }
+        .cancel-btn, .confirm-btn { flex: 1; padding: 12px; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
+        .cancel-btn { background: #f3f4f6; color: #666; }
+        .confirm-btn { background: var(--color-primary); color: white; }
+        .confirm-btn.complete { background: var(--color-accent); }
+        .confirm-btn.danger { background: #ef4444; }
+
+        /* 統計 */
+        .stats-tabs { display: flex; gap: 4px; padding: 4px; background: #f3f4f6; border-radius: 10px; margin-bottom: 16px; }
+        .stats-tab { flex: 1; padding: 8px 6px; border: none; border-radius: 8px; background: transparent; font-size: 11px; font-weight: 500; color: #666; cursor: pointer; white-space: nowrap; }
+        .stats-tab.active { background: white; color: var(--color-primary); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+        .stats-section-title { font-size: 13px; font-weight: 600; color: #666; margin: 16px 0 12px; }
+
+        /* ストリークバナー */
+        .streak-banner { display: flex; align-items: center; gap: 12px; background: linear-gradient(135deg, #fef3c7, #fde68a); border-radius: 16px; padding: 16px; margin-bottom: 16px; }
+        .streak-emoji { font-size: 40px; }
+        .streak-info { flex: 1; }
+        .streak-label { font-size: 12px; color: #92400e; }
+        .streak-value { font-size: 32px; font-weight: 700; color: #78350f; }
+        .streak-value span { font-size: 16px; color: #a16207; }
+
+        /* 週間サマリー */
+        .week-summary { display: flex; gap: 8px; margin-bottom: 16px; }
+        .week-score-card { flex: 1; background: #f9fafb; border-radius: 12px; padding: 12px; text-align: center; }
+        .week-score-label { font-size: 11px; color: #666; margin-bottom: 6px; }
+        .week-score-value { font-size: 28px; font-weight: 700; color: #333; }
+        .week-score-value span { font-size: 14px; color: #999; }
+        .week-score-bar { height: 6px; background: #e5e7eb; border-radius: 3px; margin: 8px 0; overflow: hidden; }
+        .week-score-fill { height: 100%; border-radius: 3px; }
+        .week-score-goal { font-size: 10px; color: #666; }
+        .week-score-goal.achieved { color: #059669; font-weight: 600; }
+
+        /* 今週の日別チャート */
+        .week-chart { display: flex; gap: 4px; height: 100px; padding: 8px; background: #fafafa; border-radius: 12px; margin-bottom: 16px; }
+        .week-chart-day { flex: 1; display: flex; flex-direction: column; align-items: center; }
+        .week-chart-day.today { background: rgba(251,191,36,0.1); border-radius: 8px; }
+        .week-chart-bars { flex: 1; display: flex; gap: 2px; align-items: flex-end; width: 100%; }
+        .week-chart-bar { flex: 1; min-height: 2px; border-radius: 2px 2px 0 0; }
+        .week-chart-label { font-size: 10px; color: #666; margin-top: 4px; }
+        .week-chart-day.today .week-chart-label { font-weight: 700; color: #ca8a04; }
+
+        /* 習慣達成行 */
+        .habit-stat-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #f3f4f6; }
+        .habit-stat-row:last-child { border-bottom: none; }
+        .habit-stat-emoji { font-size: 20px; flex-shrink: 0; }
+        .habit-stat-content { flex: 1; min-width: 0; }
+        .habit-stat-name-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 13px; font-weight: 500; }
+        .habit-streak-badge { font-size: 10px; background: #fef3c7; color: #92400e; padding: 2px 6px; border-radius: 10px; }
+        .habit-stat-pct { font-size: 16px; font-weight: 700; color: var(--color-primary); flex-shrink: 0; }
+        .habit-stat-detail { font-size: 10px; color: #999; text-align: right; flex-shrink: 0; }
+
+        /* 月間サマリー */
+        .month-summary { display: flex; gap: 12px; margin-bottom: 16px; }
+        .month-score-item { flex: 1; text-align: center; }
+        .month-score-label { font-size: 11px; color: #666; margin-bottom: 6px; }
+        .month-score-value { display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%; font-size: 24px; font-weight: 700; color: #333; }
+        .month-score-sub { font-size: 10px; color: #999; margin-top: 4px; }
+
+        /* 週間推移チャート */
+        .weeks-chart { display: flex; gap: 8px; height: 120px; padding: 8px; background: #fafafa; border-radius: 12px; margin-bottom: 8px; }
+        .weeks-chart-item { flex: 1; display: flex; flex-direction: column; align-items: center; }
+        .weeks-chart-bars { flex: 1; display: flex; gap: 3px; align-items: flex-end; width: 100%; }
+        .weeks-bar { flex: 1; min-height: 4px; border-radius: 3px 3px 0 0; display: flex; align-items: flex-start; justify-content: center; }
+        .weeks-bar span { font-size: 9px; font-weight: 600; color: #333; margin-top: 2px; }
+        .weeks-chart-label { font-size: 10px; color: #666; margin-top: 4px; }
+
+        .chart-legend { display: flex; justify-content: center; gap: 16px; margin-bottom: 16px; }
+        .legend-item { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #666; }
+        .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+        .legend-dot.day { background: #fef08a; }
+        .legend-dot.night { background: #c4b5fd; }
+
+        /* 月間推移チャート */
+        .months-chart { display: flex; gap: 4px; height: 100px; padding: 8px; background: #fafafa; border-radius: 12px; margin-bottom: 16px; }
+        .months-chart-item { flex: 1; display: flex; flex-direction: column; align-items: center; }
+        .months-chart-bars { flex: 1; display: flex; gap: 2px; align-items: flex-end; width: 100%; }
+        .months-bar { flex: 1; min-height: 2px; border-radius: 2px 2px 0 0; }
+        .months-chart-values { display: flex; gap: 2px; font-size: 8px; margin-top: 2px; }
+        .months-chart-values .day-val { color: #ca8a04; }
+        .months-chart-values .night-val { color: #7c3aed; }
+        .months-chart-label { font-size: 9px; color: #666; }
+
+        /* 目標設定 */
+        .goal-setting { background: #f9fafb; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+        .goal-desc { font-size: 12px; color: #666; margin-bottom: 16px; }
+        .goal-input-group { margin-bottom: 16px; }
+        .goal-label { font-size: 13px; font-weight: 500; color: #333; margin-bottom: 8px; display: block; }
+        .goal-input-row { display: flex; align-items: center; gap: 12px; }
+        .goal-input-row input[type="range"] { flex: 1; height: 6px; -webkit-appearance: none; background: #e5e7eb; border-radius: 3px; }
+        .goal-input-row input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; background: var(--color-primary); border-radius: 50%; cursor: pointer; }
+        .goal-value { font-size: 20px; font-weight: 700; color: var(--color-primary); min-width: 36px; text-align: right; }
+
+        /* バッジ */
+        .badges-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+        .badge-item { position: relative; background: #f3f4f6; border-radius: 12px; padding: 12px 8px; text-align: center; opacity: 0.4; }
+        .badge-item.earned { opacity: 1; background: linear-gradient(135deg, #fef3c7, #fde68a); }
+        .badge-icon { font-size: 28px; }
+        .badge-name { font-size: 10px; color: #666; margin-top: 4px; }
+        .badge-check { position: absolute; top: 4px; right: 4px; width: 16px; height: 16px; background: #059669; color: white; border-radius: 50%; font-size: 10px; display: flex; align-items: center; justify-content: center; }
+
+        .summary-card { background: linear-gradient(135deg, rgba(244,144,151,0.1), rgba(223,178,244,0.1)); border-radius: 16px; padding: 16px; margin-bottom: 16px; }
+        .summary-label { font-size: 12px; color: #666; margin-bottom: 4px; }
+        .summary-value { font-size: 36px; font-weight: 700; color: var(--color-primary); }
+        .summary-value span { font-size: 20px; color: #999; }
+        .summary-bar { height: 8px; background: white; border-radius: 4px; margin-top: 12px; overflow: hidden; }
+        .summary-bar-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--color-primary), var(--color-secondary)); }
+
+        .bar-chart { display: flex; align-items: flex-end; justify-content: space-between; gap: 6px; height: 120px; padding: 8px; background: #fafafa; border-radius: 12px; }
+        .bar-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+        .bar-value { font-size: 10px; font-weight: 600; color: var(--color-primary); }
+        .bar-fill { width: 100%; border-radius: 4px 4px 0 0; background: linear-gradient(180deg, var(--color-primary), var(--color-secondary)); }
+        .bar-label { font-size: 10px; color: #666; }
+
+        .habit-stat-card { background: #f9fafb; border-radius: 12px; padding: 12px; margin-bottom: 8px; }
+        .habit-stat-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+        .habit-stat-name { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; }
+        .habit-stat-name span:first-child { font-size: 18px; }
+        .habit-stat-bar { height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; }
+        .habit-stat-bar-fill { height: 100%; border-radius: 3px; }
+        .habit-stat-meta { display: flex; justify-content: space-between; font-size: 11px; color: #999; margin-top: 6px; }
+
+        .month-selector { display: flex; align-items: center; justify-content: space-between; background: #f3f4f6; border-radius: 12px; padding: 8px; margin-bottom: 16px; }
+        .month-nav { width: 36px; height: 36px; border: none; border-radius: 8px; background: white; cursor: pointer; font-size: 18px; color: #666; }
+        .month-label { font-size: 15px; font-weight: 600; color: #333; }
+
+        /* 習慣管理リスト */
+        .habit-list-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px;
+            border-bottom: 1px solid #f3f4f6;
+        }
+
+        .habit-list-item:last-child { border-bottom: none; }
+
+        .habit-list-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .habit-list-emoji { font-size: 24px; }
+        .habit-list-name { font-size: 14px; font-weight: 500; }
+
+        .habit-list-del {
+            padding: 8px 12px;
+            border: 2px solid #fecaca;
+            border-radius: 8px;
+            background: white;
+            color: #ef4444;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .habit-list-del:hover { background: #fef2f2; }
+
+        /* カラム並び替えリスト */
+        .column-order-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px;
+            margin-bottom: 8px;
+            background: #f9fafb;
+            border-radius: 10px;
+            cursor: grab;
+            user-select: none;
+            transition: transform 0.15s, background 0.15s, box-shadow 0.15s;
+        }
+
+        .column-order-item:active { cursor: grabbing; }
+        .column-order-item.dragging { opacity: 0.5; transform: scale(0.98); }
+        .column-order-item.drag-over { background: rgba(85,214,194,0.2); box-shadow: 0 0 0 2px var(--color-accent); }
+
+        .column-order-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+        }
+
+        .column-order-color {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+        }
+
+        .column-order-name { font-size: 14px; font-weight: 500; }
+        .column-order-count { font-size: 12px; color: #9ca3af; }
+
+        .column-order-handle {
+            color: #d1d5db;
+            font-size: 18px;
+            padding: 4px 8px;
+        }
+
+        .column-order-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .column-order-arrows {
+            display: flex;
+            gap: 4px;
+        }
+
+        .column-order-arrows button {
+            width: 32px;
+            height: 32px;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            background: white;
+            cursor: pointer;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .column-order-arrows button:hover { background: #f3f4f6; }
+        .column-order-arrows button:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        .column-order-del {
+            width: 32px;
+            height: 32px;
+            border: 1px solid #fecaca;
+            border-radius: 6px;
+            background: white;
+            cursor: pointer;
+            font-size: 14px;
+            color: #ef4444;
+        }
+
+        .column-order-del:hover { background: #fef2f2; }
+        .column-order-del:disabled { opacity: 0.3; cursor: not-allowed; border-color: #e5e7eb; color: #d1d5db; }
+
+        .column-order-default { 
+            font-size: 10px; 
+            color: #9ca3af; 
+            background: #f3f4f6; 
+            padding: 2px 6px; 
+            border-radius: 4px; 
+            margin-left: 6px; 
+        }
+
+        /* 日記モーダル */
+        .diary-modal { max-width: 90vw; width: 600px; }
+        
+        .diary-date-nav {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 12px 16px;
+            background: #f9fafb;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .diary-nav-btn {
+            width: 36px;
+            height: 36px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            background: white;
+            cursor: pointer;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .diary-nav-btn:hover { background: #f3f4f6; }
+
+        .diary-date {
+            font-size: 16px;
+            font-weight: 600;
+            min-width: 140px;
+            text-align: center;
+        }
+
+        .diary-today-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            background: var(--color-accent);
+            color: white;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .diary-scores-row {
+            display: flex;
+            gap: 12px;
+            padding: 12px 16px;
+            background: linear-gradient(135deg, rgba(244,144,151,0.1), rgba(223,178,244,0.1));
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .diary-score-block {
+            flex: 1;
+            text-align: center;
+        }
+
+        .diary-score-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 6px;
+            display: block;
+        }
+
+        .diary-score-input-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .diary-score-btn {
+            width: 36px;
+            height: 36px;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            background: white;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            color: #666;
+        }
+
+        .diary-score-btn:hover { background: #f3f4f6; }
+        .diary-score-btn.minus { color: var(--color-primary); }
+        .diary-score-btn.plus { color: var(--color-accent); }
+
+        .diary-score-input {
+            width: 60px;
+            height: 40px;
+            border: 2px solid var(--color-primary);
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: 700;
+            text-align: center;
+            color: var(--color-primary);
+        }
+
+        .diary-score-input:focus { outline: none; border-color: var(--color-accent); }
+
+        .diary-total-score {
+            padding: 16px;
+            background: linear-gradient(135deg, rgba(244,144,151,0.1), rgba(223,178,244,0.1));
+            border-bottom: 1px solid #e5e7eb;
+            text-align: center;
+        }
+
+        .diary-total-label {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .diary-total-input-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+        }
+
+        .diary-total-btn {
+            width: 44px;
+            height: 44px;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            background: white;
+            font-size: 20px;
+            font-weight: 600;
+            cursor: pointer;
+            color: #666;
+        }
+
+        .diary-total-btn:hover { background: #f3f4f6; }
+        .diary-total-btn.minus { color: var(--color-primary); }
+        .diary-total-btn.plus { color: var(--color-accent); }
+
+        .diary-total-input {
+            width: 80px;
+            height: 50px;
+            border: 2px solid var(--color-primary);
+            border-radius: 12px;
+            font-size: 24px;
+            font-weight: 700;
+            text-align: center;
+            color: var(--color-primary);
+        }
+
+        .diary-total-input:focus { outline: none; border-color: var(--color-accent); }
+
+        .diary-habit-tabs {
+            display: flex;
+            gap: 6px;
+            padding: 12px;
+            overflow-x: auto;
+            background: #f9fafb;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .diary-habit-tab {
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            padding: 8px 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.15s;
+            min-width: 60px;
+        }
+
+        .diary-habit-tab:hover { border-color: #d1d5db; }
+        .diary-habit-tab.active { border-color: var(--color-primary); background: rgba(244,144,151,0.1); }
+        .diary-habit-tab.has-note { border-color: var(--color-accent); }
+        .diary-habit-tab.active.has-note { border-color: var(--color-primary); }
+
+        .diary-tab-emoji { font-size: 20px; }
+        .diary-tab-name { font-size: 10px; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 50px; }
+        .diary-tab-badge { 
+            font-size: 10px; 
+            padding: 1px 6px;
+            border-radius: 8px;
+            background: #f3f4f6;
+            color: #9ca3af;
+        }
+        .diary-habit-tab.has-note .diary-tab-badge { background: var(--color-accent); color: white; }
+
+        .diary-input-area {
+            padding: 20px 16px;
+        }
+
+        .diary-current-habit {
+            text-align: center;
+            margin-bottom: 16px;
+        }
+
+        .diary-current-emoji { font-size: 40px; }
+        .diary-current-name { font-size: 18px; font-weight: 600; margin-top: 8px; }
+
+        .diary-note-input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            font-size: 15px;
+            resize: none;
+            min-height: 120px;
+        }
+
+        .diary-note-input:focus { outline: none; border-color: var(--color-primary); }
+
+        .diary-note-label {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .diary-nav-arrows {
+            display: flex;
+            gap: 12px;
+            padding: 12px 16px;
+            border-top: 1px solid #e5e7eb;
+            background: #f9fafb;
+        }
+
+        .diary-arrow-btn {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            background: white;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            color: #666;
+        }
+
+        .diary-arrow-btn:hover { background: #f3f4f6; }
+
+        .habit-btn.diary { background: rgba(245,233,96,0.2); color: #92400e; }
+
+        .hidden { display: none !important; }
+        .loading { position: fixed; top: 50px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); color: white; padding: 8px 16px; border-radius: 20px; font-size: 12px; z-index: 2000; display: flex; align-items: center; gap: 8px; }
+        .loading.hidden { display: none; }
+        .spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <div class="loading hidden" id="loading"><div class="spinner"></div><span>同期中...</span></div>
+
+        <div class="main-tabs">
+            <button class="main-tab active" onclick="switchTab('todo')">📋 TODO</button>
+            <button class="main-tab" onclick="switchTab('habit')">📊 習慣</button>
+        </div>
+
+        <!-- TODO -->
+        <div class="tab-content active" id="todoTab">
+            <div class="todo-header">
+                <div class="todo-header-row">
+                    <div style="display:flex;align-items:center;">
+                        <span class="sync-badge" id="syncBadge">ローカル</span>
+                        <span class="task-count" id="taskCount">0件</span>
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                        <button class="icon-btn theme" onclick="openThemeModal()" title="テーマ">🎨</button>
+                        <button class="icon-btn theme" onclick="openColumnOrderModal()" title="カラム並び替え">↔️</button>
+                        <button class="icon-btn add-col" onclick="openColumnModal()" title="カラム追加">+</button>
+                    </div>
+                </div>
+                <div class="pc-input">
+                    <input type="text" class="task-input" id="pcInput" placeholder="新しいタスクを入力...">
+                    <button class="add-btn" id="pcBtn" onclick="addTask('pc')" disabled>追加</button>
+                </div>
+            </div>
+            <div class="kanban" id="kanban"></div>
+            <div class="mobile-input">
+                <div class="mobile-input-collapsed" id="mobileInputCollapsed" onclick="expandMobileInput()">
+                    <span>＋ タスクを追加</span>
+                </div>
+                <div class="mobile-input-expanded hidden" id="mobileInputExpanded">
+                    <div class="mobile-input-header">
+                        <span class="mobile-input-title">タスクを追加</span>
+                        <button class="mobile-input-close" onclick="collapseMobileInput()">✕</button>
+                    </div>
+                    <div class="mobile-col-tabs" id="mobileColTabs"></div>
+                    <div class="mobile-input-row">
+                        <input type="text" class="task-input" id="mobileInput" placeholder="新しいタスク...">
+                        <button class="add-btn" id="mobileBtn" onclick="addTask('mobile')" disabled>追加</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 習慣 -->
+        <div class="tab-content" id="habitTab">
+            <div class="habit-header">
+                <button class="habit-btn today" onclick="scrollToToday()">📅 今日</button>
+                <div style="display:flex;gap:8px;">
+                    <button class="habit-btn diary" onclick="openDiaryModal()">📝 日記</button>
+                    <button class="habit-btn stats" onclick="openStatsModal()">📈 集計</button>
+                    <button class="habit-btn add" onclick="openHabitModal()">+ 習慣</button>
+                    <button class="habit-btn more" onclick="openHabitManageModal()">⚙️</button>
+                </div>
+            </div>
+            <div class="habit-container" id="habitContainer"></div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div class="modal-overlay" id="memoModal">
+        <div class="modal">
+            <div class="modal-header">
+                <span class="modal-title" id="memoTitle">タスク詳細</span>
+                <button class="modal-close" onclick="closeMemoModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">タイトル</label>
+                    <div style="display:flex;gap:8px;">
+                        <input type="text" class="form-input" id="titleInput" style="flex:1;">
+                        <button class="add-btn" onclick="saveTitle()">保存</button>
+                    </div>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f3f4f6;margin-bottom:12px;">
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <span style="font-size:14px;">重要</span>
+                        <button id="importantBtn" onclick="toggleImportant()" style="width:44px;height:26px;border:none;border-radius:13px;background:#e5e7eb;cursor:pointer;position:relative;">
+                            <span id="importantKnob" style="position:absolute;top:3px;left:3px;width:20px;height:20px;background:white;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.2);transition:transform 0.2s;"></span>
+                        </button>
+                    </div>
+                    <button onclick="confirmDelete()" style="width:36px;height:36px;border:2px solid #fecaca;border-radius:10px;background:white;cursor:pointer;">🗑️</button>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">メモ</label>
+                    <div style="display:flex;gap:8px;">
+                        <input type="text" class="form-input" id="memoInput" placeholder="メモを追加..." style="flex:1;">
+                        <button class="add-btn" onclick="addMemo()">追加</button>
+                    </div>
+                </div>
+                <div id="memoList"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="columnModal">
+        <div class="modal">
+            <div class="modal-header">
+                <span class="modal-title">新しいカラム</span>
+                <button class="modal-close" onclick="closeColumnModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">カラム名</label>
+                    <input type="text" class="form-input" id="colNameInput" placeholder="例: レビュー待ち">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">カラー</label>
+                    <div id="colColorPicker" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="btn-row">
+                    <button class="btn-full btn-secondary" onclick="closeColumnModal()">キャンセル</button>
+                    <button class="btn-full btn-primary" onclick="addColumn()">追加</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="themeModal">
+        <div class="modal">
+            <div class="modal-header">
+                <span class="modal-title">🎨 テーマ設定</span>
+                <button class="modal-close" onclick="closeThemeModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Coolors URLから適用</label>
+                    <div style="display:flex;gap:8px;">
+                        <input type="text" class="form-input" id="coolorsInput" placeholder="https://coolors.co/..." style="flex:1;">
+                        <button class="add-btn" onclick="applyCoolors()">適用</button>
+                    </div>
+                    <p id="themeError" style="color:#ef4444;font-size:12px;margin-top:6px;"></p>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">プリセット</label>
+                    <div id="presetGrid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-full btn-primary" onclick="closeThemeModal()">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="habitModal">
+        <div class="modal">
+            <div class="modal-header">
+                <span class="modal-title">新しい習慣</span>
+                <button class="modal-close" onclick="closeHabitModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">絵文字</label>
+                    <div class="emoji-grid" id="emojiGrid"></div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">習慣名</label>
+                    <input type="text" class="form-input" id="habitNameInput" placeholder="例: 早起き、運動30分...">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="btn-row">
+                    <button class="btn-full btn-secondary" onclick="closeHabitModal()">キャンセル</button>
+                    <button class="btn-full btn-accent" onclick="addHabit()">追加</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="habitManageModal">
+        <div class="modal">
+            <div class="modal-header">
+                <span class="modal-title">⚙️ 習慣の管理</span>
+                <button class="modal-close" onclick="closeHabitManageModal()">✕</button>
+            </div>
+            <div class="modal-body" id="habitManageBody">
+                <!-- 習慣リストがここに入る -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn-full btn-secondary" onclick="closeHabitManageModal()">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="columnOrderModal">
+        <div class="modal">
+            <div class="modal-header">
+                <span class="modal-title">↔️ カラム並び替え</span>
+                <button class="modal-close" onclick="closeColumnOrderModal()">✕</button>
+            </div>
+            <div class="modal-body" id="columnOrderBody">
+                <!-- カラムリストがここに入る -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn-full btn-secondary" onclick="closeColumnOrderModal()">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="scoreModal">
+        <div class="modal">
+            <div class="modal-header">
+                <span class="modal-title" id="scoreModalTitle">スコアを選択</span>
+                <button class="modal-close" onclick="closeScoreModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="score-grid" id="scoreGrid"></div>
+                <p style="text-align:center;font-size:12px;color:#999;margin-top:12px;">0: 未実施 ｜ 1-2: いまいち ｜ 3: 普通 ｜ 4-5: 良い</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="diaryModal">
+        <div class="modal diary-modal">
+            <div class="modal-header">
+                <span class="modal-title">📝 日記入力</span>
+                <button class="modal-close" onclick="closeDiaryModal()">✕</button>
+            </div>
+            <div class="diary-date-nav">
+                <button class="diary-nav-btn" onclick="diaryPrevDay()">◀</button>
+                <span class="diary-date" id="diaryDateLabel">2025/12/1</span>
+                <button class="diary-nav-btn" onclick="diaryNextDay()">▶</button>
+                <button class="diary-today-btn" onclick="diaryGoToday()">今日</button>
+            </div>
+            <div class="diary-scores-row">
+                <div class="diary-score-block">
+                    <label class="diary-score-label">☀️ 昼の仕事</label>
+                    <div class="diary-score-input-row">
+                        <button class="diary-score-btn minus" onclick="adjustDayScore(-1)">−</button>
+                        <input type="number" class="diary-score-input" id="dayScoreInput" value="0" min="0" max="100" inputmode="numeric" pattern="[0-9]*" onchange="saveDayScore()" onkeyup="if(event.key==='Enter'||event.keyCode===13){this.blur();}">
+                        <button class="diary-score-btn plus" onclick="adjustDayScore(1)">＋</button>
+                    </div>
+                </div>
+                <div class="diary-score-block">
+                    <label class="diary-score-label">🌙 夜の仕事</label>
+                    <div class="diary-score-input-row">
+                        <button class="diary-score-btn minus" onclick="adjustNightScore(-1)">−</button>
+                        <input type="number" class="diary-score-input" id="nightScoreInput" value="0" min="0" max="100" inputmode="numeric" pattern="[0-9]*" onchange="saveNightScore()" onkeyup="if(event.key==='Enter'||event.keyCode===13){this.blur();}">
+                        <button class="diary-score-btn plus" onclick="adjustNightScore(1)">＋</button>
+                    </div>
+                </div>
+            </div>
+            <div class="diary-habit-tabs" id="diaryHabitTabs">
+                <!-- 習慣タブがここに入る -->
+            </div>
+            <div class="diary-input-area" id="diaryInputArea">
+                <!-- 選択中の習慣の入力エリア -->
+            </div>
+            <div class="diary-nav-arrows">
+                <button class="diary-arrow-btn" onclick="diaryPrevHabit()">◀ 前</button>
+                <button class="diary-arrow-btn" onclick="diaryNextHabit()">次 ▶</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="statsModal">
+        <div class="modal" style="max-width:500px;">
+            <div class="modal-header">
+                <span class="modal-title">📈 集計・分析</span>
+                <button class="modal-close" onclick="closeStatsModal()">✕</button>
+            </div>
+            <div class="modal-body" style="max-height:65vh;" id="statsBody"></div>
+            <div class="modal-footer">
+                <button class="btn-full btn-accent" onclick="closeStatsModal()">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="confirm-backdrop" id="confirmBack" onclick="closeConfirm()"></div>
+    <div class="confirm-dialog" id="confirmDlg">
+        <h3 id="confirmTitle">確認</h3>
+        <p id="confirmMsg">本当によろしいですか？</p>
+        <div class="confirm-btns">
+            <button class="cancel-btn" onclick="closeConfirm()">キャンセル</button>
+            <button class="confirm-btn" id="confirmOk" onclick="execConfirm()">実行</button>
+        </div>
+    </div>
+
+    <script>
+        // ===== 定数・変数 =====
+        // 2025年12月1日〜2026年12月31日
+        const START_DATE = new Date(2025, 11, 1); // 2025/12/1
+        const END_DATE = new Date(2026, 11, 31);  // 2026/12/31
+        const SCORE_COLORS = ['#f3f4f6', '#fecaca', '#fed7aa', '#fef08a', '#bbf7d0', '#86efac'];
+        const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
+
+        let theme = { primary: '#f49097', secondary: '#dfb2f4', accent: '#55d6c2', highlight: '#f5e960', bg: '#f2f5ff' };
+        const PRESETS = [
+            { name: 'パステル', colors: { primary: '#f49097', secondary: '#dfb2f4', accent: '#55d6c2', highlight: '#f5e960', bg: '#f2f5ff' }},
+            { name: 'ローズ', colors: { primary: '#f92a82', secondary: '#ed7b84', accent: '#7eb77f', highlight: '#f5dbcb', bg: '#fff5f5' }},
+            { name: 'オーシャン', colors: { primary: '#0077b6', secondary: '#00b4d8', accent: '#90e0ef', highlight: '#caf0f8', bg: '#f0f9ff' }},
+            { name: 'フォレスト', colors: { primary: '#2d6a4f', secondary: '#40916c', accent: '#74c69d', highlight: '#b7e4c7', bg: '#f0fdf4' }}
+        ];
+
+        let columns = [
+            { id: 'todo', title: 'TODO', color: theme.primary },
+            { id: 'doing', title: '進行中', color: theme.secondary },
+            { id: 'done', title: '完了', color: theme.accent }
+        ];
+        let tasks = { todo: [], doing: [], done: [] };
+        let currentTask = null, currentCol = null;
+
+        // 習慣は空でスタート
+        let habits = [];
+        let habitScores = {};  // { "2025-12-01": { habitId: { score: 5, note: "メモ" } } }
+        let habitNotes = {};   // 備考用（後方互換性のため別管理も可）
+        let editScore = null;
+        let selEmoji = '✨';
+        let statsMonth = { year: new Date().getFullYear(), month: new Date().getMonth() };
+        let statsTab = 'overview';
+        let confirmCb = null;
+        let diaryDate = new Date(); // 日記の現在表示日
+
+        // ===== 初期化 =====
+        document.addEventListener('DOMContentLoaded', () => {
+            // まずローカルから読み込んで即時表示
+            loadFromLocal();
+            applyTheme();
+            renderKanban();
+            setupInputs();
+            renderHabitTable();
+            
+            // バックグラウンドでサーバー同期
+            if (API_URL !== 'YOUR_GAS_API_URL_HERE') {
+                syncFromServer();
+            }
+            
+            setTimeout(scrollToToday, 200);
+            
+            // Service Worker登録
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('sw.js').catch(e => console.log('SW registration failed:', e));
+            }
+        });
+
+        // ===== ユーティリティ =====
+        const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        const isToday = d => fmt(d) === fmt(new Date());
+        const isWknd = d => d.getDay() === 0 || d.getDay() === 6;
+        const daysAgo = s => Math.floor((new Date() - new Date(s)) / 86400000);
+        const txtColor = c => { const rgb = parseInt(c.slice(1), 16); return ((0.299 * ((rgb >> 16) & 0xff) + 0.587 * ((rgb >> 8) & 0xff) + 0.114 * (rgb & 0xff)) / 255) > 0.6 ? '#333' : '#fff'; };
+        const esc = t => { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; };
+
+        // ===== ストレージ =====
+        // GAS APIのURL（デプロイ後に設定）
+        const API_URL = 'YOUR_GAS_API_URL_HERE';
+        let saveTimer = null;
+
+        // サーバーからバックグラウンド同期
+        async function syncFromServer() {
+            if (API_URL === 'YOUR_GAS_API_URL_HERE') {
+                console.log('API URLが未設定です');
+                return;
+            }
+            
+            document.getElementById('loading').classList.remove('hidden');
+            updateSyncBadge('syncing', '同期中...');
+            
+            try {
+                const response = await fetch(API_URL + '?action=load');
+                const data = await response.json();
+                
+                if (data && data.success) {
+                    let needsRender = false;
+                    if (data.tasks && JSON.stringify(data.tasks) !== JSON.stringify(tasks)) {
+                        tasks = data.tasks;
+                        needsRender = true;
+                    }
+                    if (data.columns && data.columns.length > 0) columns = data.columns;
+                    if (data.habits && JSON.stringify(data.habits) !== JSON.stringify(habits)) {
+                        habits = data.habits;
+                        needsRender = true;
+                    }
+                    if (data.habitScores) habitScores = data.habitScores;
+                    if (data.habitNotes) habitNotes = data.habitNotes;
+                    if (data.dailyScores) dailyScores = data.dailyScores;
+                    if (data.settings && data.settings.theme) theme = data.settings.theme;
+                    
+                    if (needsRender) {
+                        applyTheme();
+                        renderKanban();
+                        renderHabitTable();
+                    }
+                    saveToLocal();
+                    updateSyncBadge('success', '同期完了');
+                } else {
+                    throw new Error(data.error || 'Load failed');
+                }
+            } catch(e) {
+                console.error('Sync error:', e);
+                updateSyncBadge('error', 'オフライン');
+            } finally {
+                document.getElementById('loading').classList.add('hidden');
+            }
+        }
+
+        function loadFromLocal() {
+            try {
+                const t = localStorage.getItem('kanban_tasks_v2');
+                const c = localStorage.getItem('kanban_cols_v2');
+                const th = localStorage.getItem('kanban_theme_v2');
+                const h = localStorage.getItem('habits_v2');
+                const hs = localStorage.getItem('habit_scores_v2');
+                const hn = localStorage.getItem('habit_notes_v2');
+                const ds = localStorage.getItem('daily_scores_v2');
+                if (t) tasks = JSON.parse(t);
+                if (c) columns = JSON.parse(c);
+                if (th) theme = JSON.parse(th);
+                if (h) habits = JSON.parse(h);
+                if (hs) habitScores = JSON.parse(hs);
+                if (hn) habitNotes = JSON.parse(hn);
+                if (ds) dailyScores = JSON.parse(ds);
+            } catch (e) { console.error('Local load error:', e); }
+        }
+
+        function saveToLocal() {
+            try {
+                localStorage.setItem('kanban_tasks_v2', JSON.stringify(tasks));
+                localStorage.setItem('kanban_cols_v2', JSON.stringify(columns));
+                localStorage.setItem('kanban_theme_v2', JSON.stringify(theme));
+                localStorage.setItem('habits_v2', JSON.stringify(habits));
+                localStorage.setItem('habit_scores_v2', JSON.stringify(habitScores));
+                localStorage.setItem('habit_notes_v2', JSON.stringify(habitNotes));
+                localStorage.setItem('daily_scores_v2', JSON.stringify(dailyScores));
+            } catch (e) { console.error('Local save error:', e); }
+        }
+
+        function save() {
+            saveToLocal();
+            
+            if (API_URL !== 'YOUR_GAS_API_URL_HERE') {
+                if (saveTimer) clearTimeout(saveTimer);
+                saveTimer = setTimeout(() => {
+                    syncToServer();
+                }, 500);
+            }
+        }
+
+        // ===== サーバー同期 =====
+        async function syncToServer() {
+            if (API_URL === 'YOUR_GAS_API_URL_HERE') return;
+            
+            updateSyncBadge('syncing', '保存中...');
+            
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: JSON.stringify({
+                        action: 'save',
+                        tasks: tasks,
+                        columns: columns,
+                        habits: habits,
+                        habitScores: habitScores,
+                        habitNotes: habitNotes,
+                        dailyScores: dailyScores,
+                        settings: { theme: theme }
+                    })
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    updateSyncBadge('success', '保存完了');
+                    setTimeout(() => updateSyncBadge('success', '同期済'), 2000);
+                } else {
+                    throw new Error(result.error || 'Save failed');
+                }
+            } catch(e) {
+                console.error('Save error:', e);
+                updateSyncBadge('error', 'エラー');
+            }
+        }
+
+        // 個別保存（リアルタイム同期用）
+        async function saveHabitScore(date, habitId, score) {
+            if (API_URL === 'YOUR_GAS_API_URL_HERE') return;
+            
+            try {
+                await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: JSON.stringify({
+                        action: 'saveHabitScore',
+                        date: date,
+                        habitId: habitId,
+                        score: score
+                    })
+                });
+            } catch(e) {
+                console.error('Score save error:', e);
+            }
+        }
+
+        function updateSyncBadge(status, text) {
+            const badge = document.getElementById('syncBadge');
+            badge.textContent = text;
+            badge.className = 'sync-badge ' + status;
+        }
+
+        // ===== タブ切替 =====
+        function switchTab(tab) {
+            document.querySelectorAll('.main-tab').forEach((t, i) => t.classList.toggle('active', (i === 0 && tab === 'todo') || (i === 1 && tab === 'habit')));
+            document.getElementById('todoTab').classList.toggle('active', tab === 'todo');
+            document.getElementById('habitTab').classList.toggle('active', tab === 'habit');
+            if (tab === 'habit') {
+                // タブ表示後に少し待ってからスクロール
+                setTimeout(scrollToToday, 300);
+            }
+        }
+
+        // ===== TODO =====
+        function renderKanban() {
+            const k = document.getElementById('kanban');
+            
+            // スクロール位置を保存
+            const scrollPositions = {};
+            document.querySelectorAll('.task-list').forEach(list => {
+                const col = list.closest('.column')?.dataset.col;
+                if (col) scrollPositions[col] = list.scrollTop;
+            });
+            const kanbanScroll = k.scrollLeft;
+            
+            k.innerHTML = columns.map((c, colIdx) => `
+                <div class="column ${c.id}" data-col="${c.id}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="drop(event,'${c.id}')">
+                    <div class="column-header" style="background:${c.color};color:${txtColor(c.color)}">
+                        <div><span class="column-title">${c.title}</span><span class="column-count">${(tasks[c.id]||[]).length}</span></div>
+                        ${!['todo','doing','done'].includes(c.id) ? `<button class="column-delete" onclick="delColumn('${c.id}')">✕</button>` : ''}
+                    </div>
+                    <div class="task-list">${renderTasks(c.id, colIdx)}</div>
+                </div>
+            `).join('');
+            document.getElementById('taskCount').textContent = Object.values(tasks).flat().length + '件';
+            
+            // スクロール位置を復元
+            document.querySelectorAll('.task-list').forEach(list => {
+                const col = list.closest('.column')?.dataset.col;
+                if (col && scrollPositions[col]) list.scrollTop = scrollPositions[col];
+            });
+            k.scrollLeft = kanbanScroll;
+            
+            // モバイルカラム選択を更新
+            updateMobileColTabs();
+            
+            save();
+        }
+        
+        let mobileSelectedCol = 'todo';
+        
+        function updateMobileColTabs() {
+            const container = document.getElementById('mobileColTabs');
+            if (!container) return;
+            
+            container.innerHTML = columns.map(c => 
+                `<button class="mobile-col-tab ${c.id === mobileSelectedCol ? 'active' : ''}" 
+                         onclick="selectMobileCol('${c.id}')">${c.title}</button>`
+            ).join('');
+        }
+        
+        function selectMobileCol(colId) {
+            mobileSelectedCol = colId;
+            updateMobileColTabs();
+        }
+        
+        function expandMobileInput() {
+            document.getElementById('mobileInputCollapsed').classList.add('hidden');
+            document.getElementById('mobileInputExpanded').classList.remove('hidden');
+            // 入力欄にフォーカス
+            setTimeout(() => document.getElementById('mobileInput').focus(), 100);
+        }
+        
+        function collapseMobileInput() {
+            document.getElementById('mobileInputCollapsed').classList.remove('hidden');
+            document.getElementById('mobileInputExpanded').classList.add('hidden');
+        }
+
+        function renderTasks(col, colIdx) {
+            const list = tasks[col] || [];
+            if (!list.length) return `<div class="empty-column"><div class="empty-icon">📋</div><span>タスクなし</span></div>`;
+            return list.map((t, idx) => {
+                const d = daysAgo(t.createdAt);
+                const bc = d <= 1 ? theme.accent : d <= 3 ? theme.highlight : theme.primary;
+                return `<div class="task-card ${t.important ? 'important' : ''} ${col === 'done' ? 'done-task' : ''}" 
+                            draggable="true" 
+                            data-id="${t.id}" 
+                            data-col="${col}" 
+                            data-idx="${idx}"
+                            ondragstart="dragStart(event)" 
+                            ondragend="dragEnd(event)" 
+                            ondragover="taskDragOver(event, '${col}', ${idx})"
+                            ondragleave="taskDragLeave(event)"
+                            ondrop="taskDrop(event, '${col}', ${idx})"
+                            onclick="openMemo('${t.id}','${col}')">
+                    <div class="days-badge" style="background:${bc};color:${txtColor(bc)}">${d}</div>
+                    <div class="task-title">${esc(t.title)}</div>
+                    ${t.memos?.length ? `<div class="task-meta">💬 ${t.memos.length}</div>` : ''}
+                    <div class="task-actions">
+                        <div class="task-move-btns">
+                            <button class="task-move-btn" onclick="event.stopPropagation();moveTaskPrev('${t.id}','${col}')" ${colIdx === 0 ? 'disabled' : ''}>◀</button>
+                            <button class="task-move-btn" onclick="event.stopPropagation();moveTaskNext('${t.id}','${col}')" ${colIdx === columns.length - 1 ? 'disabled' : ''}>▶</button>
+                        </div>
+                        <button class="task-action-btn star-btn pc-only ${t.important ? 'active' : ''}" onclick="event.stopPropagation();toggleStar('${t.id}','${col}')">★</button>
+                        ${col !== 'done' ? `<button class="task-action-btn complete-btn pc-only" onclick="event.stopPropagation();confirmComplete('${t.id}','${col}')">✓</button>` : ''}
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function setupInputs() {
+            ['pc', 'mobile'].forEach(t => {
+                const inp = document.getElementById(t + 'Input');
+                const btn = document.getElementById(t + 'Btn');
+                inp.addEventListener('input', () => { btn.disabled = !inp.value.trim(); });
+                inp.addEventListener('keydown', e => { if (e.key === 'Enter' && inp.value.trim()) addTask(t); });
+            });
+        }
+
+        function addTask(t) {
+            const inp = document.getElementById(t + 'Input');
+            const btn = document.getElementById(t + 'Btn');
+            const title = inp.value.trim();
+            if (!title) return;
+            
+            // モバイルの場合は選択したカラムに追加
+            let targetCol = 'todo';
+            if (t === 'mobile') {
+                targetCol = mobileSelectedCol || 'todo';
+            }
+            
+            if (!tasks[targetCol]) tasks[targetCol] = [];
+            tasks[targetCol].unshift({ id: Date.now(), title, important: false, createdAt: new Date().toISOString(), memos: [] });
+            renderKanban();
+            inp.value = ''; btn.disabled = true;
+            
+            // モバイルの場合は追加後に最小化
+            if (t === 'mobile') {
+                collapseMobileInput();
+            }
+        }
+
+        let dragEl = null;
+        let dragFromCol = null;
+        let dragFromIdx = null;
+
+        function dragStart(e) { 
+            dragEl = e.target; 
+            dragFromCol = e.target.dataset.col;
+            dragFromIdx = parseInt(e.target.dataset.idx);
+            e.target.classList.add('dragging'); 
+            e.dataTransfer.effectAllowed = 'move';
+        }
+
+        function dragEnd(e) { 
+            e.target.classList.remove('dragging'); 
+            document.querySelectorAll('.column').forEach(c => c.classList.remove('drag-over')); 
+            document.querySelectorAll('.task-card').forEach(c => c.classList.remove('drag-over-top', 'drag-over-bottom'));
+            dragEl = null;
+            dragFromCol = null;
+            dragFromIdx = null;
+        }
+
+        function taskDragOver(e, col, idx) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!dragEl) return;
+            
+            const card = e.target.closest('.task-card');
+            if (!card || card === dragEl) return;
+            
+            // カードの上半分か下半分かを判定
+            const rect = card.getBoundingClientRect();
+            const midY = rect.top + rect.height / 2;
+            const isTop = e.clientY < midY;
+            
+            // 他のカードのハイライトをクリア
+            document.querySelectorAll('.task-card').forEach(c => c.classList.remove('drag-over-top', 'drag-over-bottom'));
+            
+            card.classList.add(isTop ? 'drag-over-top' : 'drag-over-bottom');
+        }
+
+        function taskDragLeave(e) {
+            const card = e.target.closest('.task-card');
+            if (card) {
+                card.classList.remove('drag-over-top', 'drag-over-bottom');
+            }
+        }
+
+        function taskDrop(e, toCol, toIdx) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            document.querySelectorAll('.task-card').forEach(c => c.classList.remove('drag-over-top', 'drag-over-bottom'));
+            document.querySelectorAll('.column').forEach(c => c.classList.remove('drag-over'));
+            
+            if (!dragEl) return;
+            
+            const id = dragEl.dataset.id;
+            const fromCol = dragFromCol;
+            const fromIdx = dragFromIdx;
+            
+            // ドロップ位置を計算（上半分なら前、下半分なら後ろ）
+            const card = e.target.closest('.task-card');
+            let insertIdx = toIdx;
+            if (card) {
+                const rect = card.getBoundingClientRect();
+                const midY = rect.top + rect.height / 2;
+                if (e.clientY >= midY) {
+                    insertIdx = toIdx + 1;
+                }
+            }
+            
+            // 同じカラム内の移動
+            if (fromCol === toCol) {
+                if (fromIdx === insertIdx || fromIdx + 1 === insertIdx) {
+                    dragEl = null;
+                    return; // 同じ位置なら何もしない
+                }
+                
+                const task = tasks[fromCol].splice(fromIdx, 1)[0];
+                // 削除後のインデックス調整
+                if (fromIdx < insertIdx) {
+                    insertIdx--;
+                }
+                tasks[toCol].splice(insertIdx, 0, task);
+            } else {
+                // 別カラムへの移動
+                const task = tasks[fromCol].splice(fromIdx, 1)[0];
+                if (!tasks[toCol]) tasks[toCol] = [];
+                tasks[toCol].splice(insertIdx, 0, task);
+            }
+            
+            renderKanban();
+            dragEl = null;
+            dragFromCol = null;
+            dragFromIdx = null;
+        }
+
+        function drop(e, toCol) {
+            e.preventDefault();
+            document.querySelectorAll('.column').forEach(c => c.classList.remove('drag-over'));
+            document.querySelectorAll('.task-card').forEach(c => c.classList.remove('drag-over-top', 'drag-over-bottom'));
+            
+            if (!dragEl) return;
+            const id = dragEl.dataset.id, fromCol = dragEl.dataset.col;
+            if (fromCol === toCol) return;
+            const idx = tasks[fromCol].findIndex(t => String(t.id) === id);
+            if (idx === -1) return;
+            const task = tasks[fromCol].splice(idx, 1)[0];
+            if (!tasks[toCol]) tasks[toCol] = [];
+            tasks[toCol].unshift(task); // 一番上に追加
+            renderKanban();
+            dragEl = null;
+            dragFromCol = null;
+            dragFromIdx = null;
+        }
+
+        // タスクを前のカラムに移動
+        function moveTaskPrev(id, col) {
+            const colIdx = columns.findIndex(c => c.id === col);
+            if (colIdx <= 0) return;
+            
+            const prevCol = columns[colIdx - 1].id;
+            const idx = tasks[col].findIndex(t => String(t.id) === String(id));
+            if (idx === -1) return;
+            
+            const task = tasks[col].splice(idx, 1)[0];
+            if (!tasks[prevCol]) tasks[prevCol] = [];
+            tasks[prevCol].unshift(task); // 一番上に追加
+            renderKanban();
+        }
+
+        // タスクを次のカラムに移動
+        function moveTaskNext(id, col) {
+            const colIdx = columns.findIndex(c => c.id === col);
+            if (colIdx < 0 || colIdx >= columns.length - 1) return;
+            
+            const nextCol = columns[colIdx + 1].id;
+            const idx = tasks[col].findIndex(t => String(t.id) === String(id));
+            if (idx === -1) return;
+            
+            const task = tasks[col].splice(idx, 1)[0];
+            if (!tasks[nextCol]) tasks[nextCol] = [];
+            tasks[nextCol].unshift(task); // 一番上に追加
+            renderKanban();
+        }
+
+        function toggleStar(id, col) {
+            const idx = tasks[col].findIndex(x => String(x.id) === String(id));
+            if (idx === -1) return;
+            
+            const t = tasks[col][idx];
+            t.important = !t.important;
+            
+            // 重要を付けたら一番上に移動
+            if (t.important && idx > 0) {
+                tasks[col].splice(idx, 1);
+                tasks[col].unshift(t);
+            }
+            
+            renderKanban();
+        }
+
+        function confirmComplete(id, col) {
+            const t = tasks[col].find(x => String(x.id) === String(id));
+            if (!t) return;
+            showConfirm('完了確認', `「${t.title}」を完了にしますか？`, '完了', 'complete', () => {
+                const idx = tasks[col].findIndex(x => String(x.id) === String(id));
+                if (idx !== -1) { const task = tasks[col].splice(idx, 1)[0]; tasks.done.unshift(task); renderKanban(); }
+            });
+        }
+
+        function openMemo(id, col) {
+            const t = tasks[col].find(x => String(x.id) === String(id));
+            if (!t) return;
+            currentTask = t; currentCol = col;
+            document.getElementById('memoTitle').textContent = t.title;
+            document.getElementById('titleInput').value = t.title;
+            updateImportantUI(t.important);
+            renderMemoList();
+            document.getElementById('memoModal').classList.add('active');
+        }
+
+        function closeMemoModal() { document.getElementById('memoModal').classList.remove('active'); document.getElementById('memoInput').value = ''; currentTask = null; currentCol = null; }
+
+        function updateImportantUI(on) {
+            const btn = document.getElementById('importantBtn');
+            const knob = document.getElementById('importantKnob');
+            btn.style.background = on ? theme.primary : '#e5e7eb';
+            knob.style.transform = on ? 'translateX(18px)' : 'translateX(0)';
+        }
+
+        function toggleImportant() { 
+            if (!currentTask) return; 
+            currentTask.important = !currentTask.important; 
+            updateImportantUI(currentTask.important);
+            
+            // 重要を付けたら一番上に移動
+            if (currentTask.important) {
+                const idx = tasks[currentCol].findIndex(t => t.id === currentTask.id);
+                if (idx > 0) {
+                    tasks[currentCol].splice(idx, 1);
+                    tasks[currentCol].unshift(currentTask);
+                }
+            }
+            
+            renderKanban(); 
+        }
+        function saveTitle() { if (!currentTask) return; const v = document.getElementById('titleInput').value.trim(); if (v) { currentTask.title = v; document.getElementById('memoTitle').textContent = v; renderKanban(); } }
+        function addMemo() {
+            const inp = document.getElementById('memoInput');
+            const txt = inp.value.trim();
+            if (!txt || !currentTask) return;
+            if (!currentTask.memos) currentTask.memos = [];
+            currentTask.memos.unshift({ text: txt, timestamp: new Date().toISOString() });
+            renderMemoList(); renderKanban(); inp.value = '';
+        }
+
+        function renderMemoList() {
+            const list = document.getElementById('memoList');
+            if (!currentTask?.memos?.length) { list.innerHTML = '<div style="text-align:center;padding:30px;color:#d1d5db;">💬 まだメモがありません</div>'; return; }
+            list.innerHTML = currentTask.memos.map(m => {
+                const d = new Date(m.timestamp);
+                return `<div style="background:#f9fafb;border-radius:10px;padding:12px;margin-bottom:8px;"><div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}</div><div style="font-size:13px;line-height:1.4;">${esc(m.text)}</div></div>`;
+            }).join('');
+        }
+
+        function confirmDelete() {
+            showConfirm('削除確認', `「${currentTask.title}」を削除しますか？`, '削除', 'danger', () => {
+                const idx = tasks[currentCol].findIndex(t => t.id === currentTask.id);
+                if (idx !== -1) { tasks[currentCol].splice(idx, 1); renderKanban(); }
+                closeMemoModal();
+            });
+        }
+
+        let selColColor = '#f49097';
+        function openColumnModal() { selColColor = theme.primary; renderColColors(); document.getElementById('colNameInput').value = ''; document.getElementById('columnModal').classList.add('active'); }
+        function closeColumnModal() { document.getElementById('columnModal').classList.remove('active'); }
+        function renderColColors() {
+            const colors = [theme.primary, theme.secondary, theme.accent, theme.highlight, '#6366f1', '#64748b'];
+            document.getElementById('colColorPicker').innerHTML = colors.map(c => `<button style="width:40px;height:40px;border:${c === selColColor ? '3px solid #333' : 'none'};border-radius:10px;background:${c};cursor:pointer;" onclick="selColColor='${c}';renderColColors()"></button>`).join('');
+        }
+        function addColumn() {
+            const name = document.getElementById('colNameInput').value.trim();
+            if (!name) return;
+            const id = 'col_' + Date.now();
+            columns.push({ id, title: name, color: selColColor });
+            tasks[id] = [];
+            renderKanban();
+            closeColumnModal();
+        }
+        function delColumn(id) { if (['todo','doing','done'].includes(id)) return; columns = columns.filter(c => c.id !== id); delete tasks[id]; renderKanban(); }
+
+        // ===== カラム並び替え =====
+        let colOrderDragIdx = null;
+
+        function openColumnOrderModal() {
+            renderColumnOrderList();
+            document.getElementById('columnOrderModal').classList.add('active');
+        }
+
+        function closeColumnOrderModal() {
+            document.getElementById('columnOrderModal').classList.remove('active');
+        }
+
+        function renderColumnOrderList() {
+            const body = document.getElementById('columnOrderBody');
+            const canDelete = columns.length > 1; // 最低1つは残す
+            
+            body.innerHTML = columns.map((col, idx) => {
+                const taskCount = (tasks[col.id] || []).length;
+                
+                return `
+                <div class="column-order-item" 
+                     draggable="true"
+                     data-col-idx="${idx}"
+                     ondragstart="colOrderDragStart(event, ${idx})"
+                     ondragend="colOrderDragEnd(event)"
+                     ondragover="colOrderDragOver(event, ${idx})"
+                     ondragleave="colOrderDragLeave(event)"
+                     ondrop="colOrderDrop(event, ${idx})">
+                    <div class="column-order-info">
+                        <div class="column-order-color" style="background:${col.color}"></div>
+                        <div>
+                            <div class="column-order-name">${col.title}</div>
+                            <div class="column-order-count">${taskCount}件</div>
+                        </div>
+                    </div>
+                    <div class="column-order-actions">
+                        <div class="column-order-arrows">
+                            <button onclick="moveColumnUp(${idx})" ${idx === 0 ? 'disabled' : ''}>▲</button>
+                            <button onclick="moveColumnDown(${idx})" ${idx === columns.length - 1 ? 'disabled' : ''}>▼</button>
+                        </div>
+                        <button class="column-order-del" 
+                                onclick="confirmDeleteColumn('${col.id}', '${esc(col.title)}', ${taskCount})"
+                                ${!canDelete ? 'disabled title="最低1つのカラムが必要です"' : ''}>🗑</button>
+                    </div>
+                </div>
+            `}).join('');
+        }
+
+        function moveColumnUp(idx) {
+            if (idx <= 0) return;
+            [columns[idx - 1], columns[idx]] = [columns[idx], columns[idx - 1]];
+            save();
+            renderColumnOrderList();
+            renderKanban();
+        }
+
+        function moveColumnDown(idx) {
+            if (idx >= columns.length - 1) return;
+            [columns[idx], columns[idx + 1]] = [columns[idx + 1], columns[idx]];
+            save();
+            renderColumnOrderList();
+            renderKanban();
+        }
+
+        function confirmDeleteColumn(colId, colTitle, taskCount) {
+            // 最低1つは残す
+            if (columns.length <= 1) return;
+            
+            let message = `「${colTitle}」を削除しますか？`;
+            if (taskCount > 0) {
+                message += `\n\n⚠️ ${taskCount}件のタスクも削除されます`;
+            }
+            
+            showConfirm('カラムを削除', message, '削除', 'danger', () => {
+                columns = columns.filter(c => c.id !== colId);
+                delete tasks[colId];
+                save();
+                renderColumnOrderList();
+                renderKanban();
+            });
+        }
+
+        function colOrderDragStart(e, idx) {
+            colOrderDragIdx = idx;
+            e.target.classList.add('dragging');
+        }
+
+        function colOrderDragEnd(e) {
+            e.target.classList.remove('dragging');
+            document.querySelectorAll('.column-order-item').forEach(el => el.classList.remove('drag-over', 'dragging'));
+            colOrderDragIdx = null;
+        }
+
+        function colOrderDragOver(e, idx) {
+            e.preventDefault();
+            if (colOrderDragIdx === null || colOrderDragIdx === idx) return;
+            e.target.closest('.column-order-item')?.classList.add('drag-over');
+        }
+
+        function colOrderDragLeave(e) {
+            e.target.closest('.column-order-item')?.classList.remove('drag-over');
+        }
+
+        function colOrderDrop(e, toIdx) {
+            e.preventDefault();
+            document.querySelectorAll('.column-order-item').forEach(el => el.classList.remove('drag-over'));
+            
+            if (colOrderDragIdx === null || colOrderDragIdx === toIdx) return;
+            
+            const col = columns.splice(colOrderDragIdx, 1)[0];
+            columns.splice(toIdx, 0, col);
+            save();
+            renderColumnOrderList();
+            renderKanban();
+            colOrderDragIdx = null;
+        }
+
+        function openThemeModal() { renderPresets(); document.getElementById('coolorsInput').value = ''; document.getElementById('themeError').textContent = ''; document.getElementById('themeModal').classList.add('active'); }
+        function closeThemeModal() { document.getElementById('themeModal').classList.remove('active'); }
+        function renderPresets() {
+            document.getElementById('presetGrid').innerHTML = PRESETS.map(p => `<button style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px;border:2px solid #e5e7eb;border-radius:12px;background:white;cursor:pointer;" onclick="applyPreset('${p.name}')">
+                <div style="display:flex;gap:4px;"><span style="width:20px;height:20px;border-radius:50%;background:${p.colors.primary}"></span><span style="width:20px;height:20px;border-radius:50%;background:${p.colors.secondary}"></span><span style="width:20px;height:20px;border-radius:50%;background:${p.colors.accent}"></span></div>
+                <span style="font-size:12px;color:#666;">${p.name}</span></button>`).join('');
+        }
+        function applyPreset(name) { const p = PRESETS.find(x => x.name === name); if (p) { theme = {...p.colors}; updateColColors(); applyTheme(); renderKanban(); closeThemeModal(); } }
+        function applyCoolors() {
+            const url = document.getElementById('coolorsInput').value;
+            const m = url.match(/coolors\.co\/([a-f0-9-]+)/i);
+            if (m) {
+                const cs = m[1].split('-').map(c => '#' + c);
+                if (cs.length >= 3) { theme = { primary: cs[0], secondary: cs[1], accent: cs[cs.length-1], highlight: cs[2]||cs[0], bg: cs[3]||'#f2f5ff' }; updateColColors(); applyTheme(); renderKanban(); closeThemeModal(); return; }
+            }
+            document.getElementById('themeError').textContent = 'URLを解析できませんでした';
+        }
+        function updateColColors() { columns = columns.map(c => c.id === 'todo' ? {...c, color: theme.primary} : c.id === 'doing' ? {...c, color: theme.secondary} : c.id === 'done' ? {...c, color: theme.accent} : c); }
+        function applyTheme() {
+            ['primary','secondary','accent','highlight','bg'].forEach(k => document.documentElement.style.setProperty('--color-' + k, theme[k]));
+            document.body.style.background = `linear-gradient(135deg, ${theme.bg} 0%, #fff 100%)`;
+            document.querySelector('meta[name="theme-color"]').content = theme.primary;
+            save();
+        }
+
+        // ===== 習慣 =====
+        function genHabitDates() {
+            const dates = [];
+            let cur = new Date(START_DATE);
+            while (cur <= END_DATE) { 
+                dates.push(new Date(cur)); 
+                cur.setDate(cur.getDate() + 1); 
+            }
+            return dates;
+        }
+
+        function renderHabitTable() {
+            const container = document.getElementById('habitContainer');
+
+            // 習慣が0件の場合
+            if (habits.length === 0) {
+                container.innerHTML = `
+                    <div class="habit-empty">
+                        <div class="habit-empty-icon">📝</div>
+                        <div class="habit-empty-text">まだ習慣が登録されていません</div>
+                        <button class="habit-btn add" onclick="openHabitModal()">+ 習慣を追加</button>
+                    </div>
+                `;
+                return;
+            }
+
+            const dates = genHabitDates();
+
+            let html = `
+                <div class="habit-table-head">
+                    <div class="habit-date-col">日付</div>
+                    <div class="habit-score-col-head">スコア</div>
+                    <div class="habit-items-head" id="habitItemsHead">
+                        ${habits.map((h, idx) => `
+                            <div class="habit-item-col" 
+                                 draggable="true" 
+                                 data-habit-idx="${idx}"
+                                 ondragstart="habitDragStart(event, ${idx})"
+                                 ondragend="habitDragEnd(event)"
+                                 ondragover="habitDragOver(event, ${idx})"
+                                 ondragleave="habitDragLeave(event)"
+                                 ondrop="habitDrop(event, ${idx})"
+                                 ontouchstart="habitTouchStart(event, ${idx})"
+                                 ontouchmove="habitTouchMove(event)"
+                                 ontouchend="habitTouchEnd(event, ${idx})">
+                                <div class="habit-emoji">${h.emoji}</div>
+                                <div class="habit-name">${h.name}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                <div class="habit-table-body" id="habitBody" onscroll="syncHabitScroll()">
+            `;
+
+            let curMonth = -1;
+            dates.forEach(d => {
+                const ds = fmt(d), m = d.getMonth() + 1, today = isToday(d), wknd = isWknd(d);
+                if (m !== curMonth) { curMonth = m; html += `<div class="habit-month-div month-bg-${m}">📅 ${d.getFullYear()}年 ${m}月</div>`; }
+                
+                // スコアを取得
+                const scores = dailyScores[ds];
+                let dayScore = 0, nightScore = 0;
+                if (typeof scores === 'number') {
+                    nightScore = scores;
+                } else if (scores) {
+                    dayScore = scores.day || 0;
+                    nightScore = scores.night || 0;
+                }
+                
+                html += `<div class="habit-row ${today ? 'today' : wknd ? 'weekend' : ''}" ${today ? 'id="todayRow"' : ''}>
+                    <div class="habit-date-cell" onclick="openDiaryForDate('${ds}')" style="cursor:pointer;"><span class="day-name">${DAY_NAMES[d.getDay()]}</span><span class="date-num">${m}/${d.getDate()}</span>${today ? '<span class="today-badge">今日</span>' : ''}</div>
+                    <div class="habit-daily-scores" onclick="openDiaryForDate('${ds}')" style="cursor:pointer;">
+                        <span class="daily-score night" style="background:${getScoreColor(nightScore)}">${nightScore || '-'}</span>
+                        <span class="daily-score day" style="background:${getScoreColor(dayScore)}">${dayScore || '-'}</span>
+                    </div>
+                    <div class="habit-scores-cell" data-date="${ds}" onscroll="syncRowScroll(event)">${habits.map((h, idx) => {
+                        const done = habitScores[ds]?.[h.id] ? true : false;
+                        return `<div class="habit-score-cell" onclick="openDiaryForDateAndHabit('${ds}', ${idx})" style="cursor:pointer;"><div class="check-display ${done ? 'done' : ''}">${done ? '✓' : ''}</div></div>`;
+                    }).join('')}</div>
+                </div>`;
+            });
+
+            html += `</div>`;
+
+            container.innerHTML = html;
+            
+            // スクロール同期の初期化
+            setupHabitScrollSync();
+        }
+        
+        // スコアに応じた色を返す
+        function getScoreColor(score) {
+            if (!score || score === 0) return '#f3f4f6';
+            if (score >= 8) return '#86efac'; // 緑
+            if (score >= 5) return '#fef08a'; // 黄
+            if (score >= 3) return '#fed7aa'; // オレンジ
+            return '#fecaca'; // 赤
+        }
+        
+        // ヘッダーと本体のスクロール同期
+        function setupHabitScrollSync() {
+            const header = document.getElementById('habitItemsHead');
+            const body = document.getElementById('habitBody');
+            if (!header || !body) return;
+            
+            // 本体の各行のスクロールをヘッダーに同期
+            body.addEventListener('scroll', syncHabitScroll, { passive: true });
+        }
+        
+        function syncHabitScroll() {
+            const header = document.getElementById('habitItemsHead');
+            const body = document.getElementById('habitBody');
+            if (!header || !body) return;
+            
+            // 最初の行のスクロール位置を取得
+            const firstRow = body.querySelector('.habit-scores-cell');
+            if (firstRow) {
+                header.scrollLeft = firstRow.scrollLeft;
+            }
+        }
+        
+        // 各行のスクロールを同期
+        function syncRowScroll(e) {
+            const scrollLeft = e.target.scrollLeft;
+            const header = document.getElementById('habitItemsHead');
+            if (header) header.scrollLeft = scrollLeft;
+            
+            // 他の行も同期
+            document.querySelectorAll('.habit-scores-cell').forEach(cell => {
+                if (cell !== e.target) cell.scrollLeft = scrollLeft;
+            });
+        }
+
+        // ===== 習慣ヘッダーのドラッグ並び替え =====
+        let habitDragIdx = null;
+        let habitTouchStartX = 0;
+        let habitTouchElement = null;
+
+        function habitDragStart(e, idx) {
+            habitDragIdx = idx;
+            e.target.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        }
+
+        function habitDragEnd(e) {
+            e.target.classList.remove('dragging');
+            document.querySelectorAll('.habit-item-col').forEach(el => {
+                el.classList.remove('drag-over', 'dragging');
+            });
+            habitDragIdx = null;
+        }
+
+        function habitDragOver(e, idx) {
+            e.preventDefault();
+            if (habitDragIdx === null || habitDragIdx === idx) return;
+            e.target.closest('.habit-item-col')?.classList.add('drag-over');
+        }
+
+        function habitDragLeave(e) {
+            e.target.closest('.habit-item-col')?.classList.remove('drag-over');
+        }
+
+        function habitDrop(e, toIdx) {
+            e.preventDefault();
+            document.querySelectorAll('.habit-item-col').forEach(el => el.classList.remove('drag-over'));
+            
+            if (habitDragIdx === null || habitDragIdx === toIdx) return;
+            
+            // 並び替え実行
+            reorderHabits(habitDragIdx, toIdx);
+            habitDragIdx = null;
+        }
+
+        // タッチ操作用
+        function habitTouchStart(e, idx) {
+            habitDragIdx = idx;
+            habitTouchStartX = e.touches[0].clientX;
+            habitTouchElement = e.target.closest('.habit-item-col');
+            
+            // 長押しで開始を示す
+            setTimeout(() => {
+                if (habitTouchElement) {
+                    habitTouchElement.classList.add('dragging');
+                    if (navigator.vibrate) navigator.vibrate(30);
+                }
+            }, 200);
+        }
+
+        function habitTouchMove(e) {
+            if (habitDragIdx === null || !habitTouchElement) return;
+            
+            const touch = e.touches[0];
+            const elements = document.elementsFromPoint(touch.clientX, touch.clientY);
+            const targetCol = elements.find(el => el.classList.contains('habit-item-col') && el !== habitTouchElement);
+            
+            document.querySelectorAll('.habit-item-col').forEach(el => el.classList.remove('drag-over'));
+            if (targetCol) {
+                targetCol.classList.add('drag-over');
+            }
+        }
+
+        function habitTouchEnd(e, fromIdx) {
+            if (habitDragIdx === null) return;
+            
+            const touch = e.changedTouches[0];
+            const elements = document.elementsFromPoint(touch.clientX, touch.clientY);
+            const targetCol = elements.find(el => el.classList.contains('habit-item-col'));
+            
+            document.querySelectorAll('.habit-item-col').forEach(el => {
+                el.classList.remove('drag-over', 'dragging');
+            });
+            
+            if (targetCol && targetCol !== habitTouchElement) {
+                const toIdx = parseInt(targetCol.dataset.habitIdx);
+                if (!isNaN(toIdx) && fromIdx !== toIdx) {
+                    reorderHabits(fromIdx, toIdx);
+                }
+            }
+            
+            habitDragIdx = null;
+            habitTouchElement = null;
+        }
+
+        function reorderHabits(fromIdx, toIdx) {
+            const habit = habits.splice(fromIdx, 1)[0];
+            habits.splice(toIdx, 0, habit);
+            save();
+            renderHabitTable();
+            
+            // フィードバック
+            if (navigator.vibrate) navigator.vibrate(50);
+        }
+
+        function scrollToToday() {
+            const row = document.getElementById('todayRow');
+            const body = document.getElementById('habitBody');
+            if (row && body) {
+                requestAnimationFrame(() => {
+                    // 今日の行を画面中央より少し上に表示
+                    const bodyHeight = body.clientHeight;
+                    const scrollPos = row.offsetTop - (bodyHeight / 3);
+                    
+                    body.scrollTo({
+                        top: Math.max(0, scrollPos),
+                        behavior: 'smooth'
+                    });
+                });
+            }
+        }
+
+        // ===== 日記モーダル =====
+        let diaryHabitIdx = 0; // 現在選択中の習慣インデックス
+        let dailyScores = {}; // { "2025-12-01": { day: 10, night: 15 } } 日ごとのスコア
+
+        function openDiaryModal() {
+            if (habits.length === 0) {
+                alert('先に習慣を登録してください');
+                return;
+            }
+            diaryDate = new Date();
+            diaryHabitIdx = 0;
+            renderDiaryModal();
+            document.getElementById('diaryModal').classList.add('active');
+        }
+
+        function closeDiaryModal() {
+            // 閉じる前に現在の備考を保存
+            saveDiaryNote();
+            save();
+            
+            // スクロール位置を保存
+            const habitBody = document.getElementById('habitBody');
+            const scrollTop = habitBody ? habitBody.scrollTop : 0;
+            
+            renderHabitTable();
+            
+            // スクロール位置を復元
+            const newHabitBody = document.getElementById('habitBody');
+            if (newHabitBody) {
+                newHabitBody.scrollTop = scrollTop;
+            }
+            
+            document.getElementById('diaryModal').classList.remove('active');
+        }
+
+        function diaryPrevDay() {
+            saveDiaryNote();
+            save(); // 保存を追加
+            diaryDate.setDate(diaryDate.getDate() - 1);
+            renderDiaryModal();
+        }
+
+        function diaryNextDay() {
+            saveDiaryNote();
+            save(); // 保存を追加
+            diaryDate.setDate(diaryDate.getDate() + 1);
+            renderDiaryModal();
+        }
+
+        function diaryGoToday() {
+            saveDiaryNote();
+            save(); // 保存を追加
+            diaryDate = new Date();
+            renderDiaryModal();
+        }
+
+        // 特定の日付で日記を開く
+        function openDiaryForDate(dateStr) {
+            if (habits.length === 0) {
+                alert('先に習慣を登録してください');
+                return;
+            }
+            diaryDate = new Date(dateStr);
+            diaryHabitIdx = 0;
+            renderDiaryModal();
+            document.getElementById('diaryModal').classList.add('active');
+        }
+
+        // 特定の日付と習慣で日記を開く
+        function openDiaryForDateAndHabit(dateStr, habitIdx) {
+            if (habits.length === 0) {
+                alert('先に習慣を登録してください');
+                return;
+            }
+            diaryDate = new Date(dateStr);
+            diaryHabitIdx = habitIdx;
+            renderDiaryModal();
+            document.getElementById('diaryModal').classList.add('active');
+        }
+
+        function diaryPrevHabit() {
+            saveDiaryNote();
+            save(); // 保存を追加
+            diaryHabitIdx = (diaryHabitIdx - 1 + habits.length) % habits.length;
+            renderDiaryModal();
+        }
+
+        function diaryNextHabit() {
+            saveDiaryNote();
+            save(); // 保存を追加
+            diaryHabitIdx = (diaryHabitIdx + 1) % habits.length;
+            renderDiaryModal();
+        }
+
+        function selectDiaryHabit(idx) {
+            saveDiaryNote();
+            save(); // 保存を追加
+            diaryHabitIdx = idx;
+            renderDiaryModal();
+        }
+
+        function renderDiaryModal() {
+            const ds = fmt(diaryDate);
+            const m = diaryDate.getMonth() + 1;
+            const d = diaryDate.getDate();
+            const dayName = DAY_NAMES[diaryDate.getDay()];
+            
+            document.getElementById('diaryDateLabel').textContent = `${diaryDate.getFullYear()}/${m}/${d}（${dayName}）`;
+            
+            // 昼・夜のスコア
+            const scores = dailyScores[ds] || { day: 0, night: 0 };
+            // 後方互換: 数値だけの場合はnightとして扱う
+            if (typeof scores === 'number') {
+                document.getElementById('dayScoreInput').value = 0;
+                document.getElementById('nightScoreInput').value = scores;
+            } else {
+                document.getElementById('dayScoreInput').value = scores.day || 0;
+                document.getElementById('nightScoreInput').value = scores.night || 0;
+            }
+            
+            // 習慣タブ
+            const tabsHtml = habits.map((h, idx) => {
+                const note = habitNotes[ds]?.[h.id] || '';
+                const hasNote = note.trim().length > 0;
+                return `
+                    <div class="diary-habit-tab ${idx === diaryHabitIdx ? 'active' : ''} ${hasNote ? 'has-note' : ''}" 
+                         onclick="selectDiaryHabit(${idx})">
+                        <span class="diary-tab-emoji">${h.emoji}</span>
+                        <span class="diary-tab-name">${h.name}</span>
+                        <span class="diary-tab-badge">${hasNote ? '✓' : '-'}</span>
+                    </div>
+                `;
+            }).join('');
+            document.getElementById('diaryHabitTabs').innerHTML = tabsHtml;
+            
+            // 入力エリア（備考のみ）
+            const habit = habits[diaryHabitIdx];
+            const note = habitNotes[ds]?.[habit.id] || '';
+            
+            const inputHtml = `
+                <div class="diary-current-habit">
+                    <div class="diary-current-emoji">${habit.emoji}</div>
+                    <div class="diary-current-name">${habit.name}</div>
+                </div>
+                <label class="diary-note-label">📝 今日の記録</label>
+                <textarea class="diary-note-input" 
+                          id="diaryNoteInput"
+                          placeholder="今日はどうでしたか？">${esc(note)}</textarea>
+            `;
+            document.getElementById('diaryInputArea').innerHTML = inputHtml;
+            
+            // 選択中のタブにスクロール
+            setTimeout(() => {
+                const activeTab = document.querySelector('.diary-habit-tab.active');
+                if (activeTab) {
+                    activeTab.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+                }
+            }, 50);
+        }
+
+        function adjustDayScore(delta) {
+            const input = document.getElementById('dayScoreInput');
+            let value = parseInt(input.value) || 0;
+            value = Math.max(0, Math.min(100, value + delta));
+            input.value = value;
+            saveDayScore();
+        }
+
+        function saveDayScore() {
+            const ds = fmt(diaryDate);
+            let value = parseInt(document.getElementById('dayScoreInput').value) || 0;
+            value = Math.max(0, Math.min(100, value)); // 0-100に制限
+            document.getElementById('dayScoreInput').value = value;
+            if (!dailyScores[ds] || typeof dailyScores[ds] === 'number') {
+                dailyScores[ds] = { day: 0, night: dailyScores[ds] || 0 };
+            }
+            dailyScores[ds].day = value;
+            save();
+        }
+
+        function adjustNightScore(delta) {
+            const input = document.getElementById('nightScoreInput');
+            let value = parseInt(input.value) || 0;
+            value = Math.max(0, Math.min(100, value + delta));
+            input.value = value;
+            saveNightScore();
+        }
+
+        function saveNightScore() {
+            const ds = fmt(diaryDate);
+            let value = parseInt(document.getElementById('nightScoreInput').value) || 0;
+            value = Math.max(0, Math.min(100, value)); // 0-100に制限
+            document.getElementById('nightScoreInput').value = value;
+            if (!dailyScores[ds] || typeof dailyScores[ds] === 'number') {
+                dailyScores[ds] = { day: 0, night: dailyScores[ds] || 0 };
+            }
+            dailyScores[ds].night = value;
+            save();
+        }
+
+        function saveDiaryNote() {
+            const textarea = document.getElementById('diaryNoteInput');
+            if (!textarea || habits.length === 0) return;
+            
+            const ds = fmt(diaryDate);
+            const habit = habits[diaryHabitIdx];
+            const note = textarea.value;
+            
+            if (!habitNotes[ds]) habitNotes[ds] = {};
+            habitNotes[ds][habit.id] = note;
+            
+            // 備考があればチェックも入れる
+            if (!habitScores[ds]) habitScores[ds] = {};
+            if (note.trim()) {
+                habitScores[ds][habit.id] = 1;
+            } else {
+                habitScores[ds][habit.id] = 0;
+            }
+        }
+
+        function setDiaryNote(habitId, note) {
+            const ds = fmt(diaryDate);
+            if (!habitNotes[ds]) habitNotes[ds] = {};
+            habitNotes[ds][habitId] = note;
+            
+            // 備考があればチェックも入れる
+            if (!habitScores[ds]) habitScores[ds] = {};
+            if (note.trim()) {
+                habitScores[ds][habitId] = 1;
+            } else {
+                habitScores[ds][habitId] = 0;
+            }
+            save();
+        }
+
+        // 習慣チェックのトグル
+        function toggleHabitCheck(ds, habitId, cellId) {
+            if (!habitScores[ds]) habitScores[ds] = {};
+            
+            // トグル: 1 → 0, 0 → 1
+            const current = habitScores[ds][habitId] || 0;
+            habitScores[ds][habitId] = current ? 0 : 1;
+            
+            // リアルタイム同期
+            saveHabitScore(ds, habitId, habitScores[ds][habitId]);
+            save();
+            
+            // ボタンだけ更新（全体再描画を避ける）
+            const cell = document.getElementById(cellId);
+            if (cell) {
+                const btn = cell.querySelector('.check-btn');
+                if (btn) {
+                    const done = habitScores[ds][habitId];
+                    btn.classList.toggle('done', done);
+                    btn.textContent = done ? '✓' : '';
+                }
+            }
+        }
+
+        function openScoreModal(ds, hid, cur, cellId) {
+            editScore = { ds, hid, cur, cellId };
+            
+            // 選択中のセルをハイライト
+            document.querySelectorAll('.habit-score-cell').forEach(c => c.classList.remove('editing'));
+            const cell = document.getElementById(cellId);
+            if (cell) cell.classList.add('editing');
+            
+            // 習慣名を取得
+            const habit = habits.find(h => h.id === hid);
+            const habitName = habit ? `${habit.emoji} ${habit.name}` : '';
+            document.getElementById('scoreModalTitle').textContent = habitName ? `${habitName} のスコア` : 'スコアを選択';
+            
+            document.getElementById('scoreGrid').innerHTML = [0,1,2,3,4,5].map(s => `<button class="score-option ${s === cur ? 'selected' : ''}" style="background:${SCORE_COLORS[s]};color:${s >= 4 ? '#166534' : s >= 1 ? '#78350f' : '#9ca3af'};" onclick="setScore(${s})">${s || '✕'}</button>`).join('');
+            document.getElementById('scoreModal').classList.add('active');
+        }
+
+        function closeScoreModal() { 
+            document.getElementById('scoreModal').classList.remove('active'); 
+            // ハイライト解除
+            document.querySelectorAll('.habit-score-cell').forEach(c => c.classList.remove('editing'));
+            editScore = null; 
+        }
+
+        function setScore(s) { 
+            if (!editScore) return; 
+            if (!habitScores[editScore.ds]) habitScores[editScore.ds] = {}; 
+            habitScores[editScore.ds][editScore.hid] = s; 
+            
+            // リアルタイム同期
+            saveHabitScore(editScore.ds, editScore.hid, s);
+            
+            save(); 
+            renderHabitTable(); 
+            closeScoreModal(); 
+        }
+
+        function openHabitModal() {
+            selEmoji = '✨'; document.getElementById('habitNameInput').value = '';
+            document.getElementById('emojiGrid').innerHTML = ['✨','🌅','🏃','📚','🧘','💧','🥗','💪','🎯','💤','🚭','📝','🎨','🎵','💻','🌱'].map(e => `<button class="emoji-btn ${e === selEmoji ? 'selected' : ''}" onclick="selEmoji='${e}';document.querySelectorAll('#emojiGrid .emoji-btn').forEach(b=>b.classList.toggle('selected',b.textContent==='${e}'))">${e}</button>`).join('');
+            document.getElementById('habitModal').classList.add('active');
+        }
+        function closeHabitModal() { document.getElementById('habitModal').classList.remove('active'); }
+        function addHabit() { 
+            const name = document.getElementById('habitNameInput').value.trim(); 
+            if (!name) return; 
+            habits.push({ id: Date.now(), name, emoji: selEmoji }); 
+            save(); 
+            renderHabitTable(); 
+            closeHabitModal(); 
+        }
+
+        // 習慣管理モーダル
+        function openHabitManageModal() {
+            renderHabitManageList();
+            document.getElementById('habitManageModal').classList.add('active');
+        }
+
+        function closeHabitManageModal() {
+            document.getElementById('habitManageModal').classList.remove('active');
+        }
+
+        function renderHabitManageList() {
+            const body = document.getElementById('habitManageBody');
+            if (habits.length === 0) {
+                body.innerHTML = '<div style="text-align:center;padding:30px;color:#9ca3af;">習慣がありません</div>';
+                return;
+            }
+            body.innerHTML = habits.map(h => `
+                <div class="habit-list-item">
+                    <div class="habit-list-info">
+                        <span class="habit-list-emoji">${h.emoji}</span>
+                        <span class="habit-list-name">${h.name}</span>
+                    </div>
+                    <button class="habit-list-del" onclick="confirmDelHabit(${h.id}, '${esc(h.name)}')">削除</button>
+                </div>
+            `).join('');
+        }
+
+        function confirmDelHabit(id, name) {
+            showConfirm('習慣を削除', `「${name}」を削除しますか？\n記録データも削除されます。`, '削除', 'danger', () => {
+                habits = habits.filter(h => h.id !== id);
+                save();
+                renderHabitTable();
+                renderHabitManageList();
+            });
+        }
+
+        // ===== 統計 =====
+        let weeklyGoal = { day: 70, night: 70 }; // デフォルト目標
+        
+        function openStatsModal() { 
+            if (habits.length === 0) {
+                showConfirm('お知らせ', '習慣を登録してから集計をご利用ください。', '閉じる', '', () => {});
+                return;
+            }
+            // 目標をLocalStorageから読み込み
+            const savedGoal = localStorage.getItem('weekly_goal_v2');
+            if (savedGoal) weeklyGoal = JSON.parse(savedGoal);
+            
+            statsTab = 'overview'; 
+            renderStats(); 
+            document.getElementById('statsModal').classList.add('active'); 
+        }
+        function closeStatsModal() { document.getElementById('statsModal').classList.remove('active'); }
+
+        // 週の開始日（月曜）を取得
+        function getWeekStart(date) {
+            const d = new Date(date);
+            const day = d.getDay();
+            const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+            return new Date(d.setDate(diff));
+        }
+
+        // スコア取得ヘルパー
+        function getDayNightScores(ds) {
+            const s = dailyScores[ds];
+            if (!s) return { day: 0, night: 0 };
+            if (typeof s === 'number') return { day: 0, night: s };
+            return { day: s.day || 0, night: s.night || 0 };
+        }
+
+        // 連続達成日数（ストリーク）を計算
+        function calculateStreak() {
+            const today = new Date();
+            let streak = 0;
+            let d = new Date(today);
+            
+            while (true) {
+                const ds = fmt(d);
+                const scores = getDayNightScores(ds);
+                // 昼または夜のどちらかが入力されていればカウント
+                if (scores.day > 0 || scores.night > 0) {
+                    streak++;
+                    d.setDate(d.getDate() - 1);
+                } else {
+                    // 今日がまだ0の場合は昨日から数える
+                    if (streak === 0 && isToday(d)) {
+                        d.setDate(d.getDate() - 1);
+                        continue;
+                    }
+                    break;
+                }
+                if (d < START_DATE) break;
+            }
+            return streak;
+        }
+
+        // 習慣のストリーク計算
+        function calculateHabitStreak(habitId) {
+            const today = new Date();
+            let streak = 0;
+            let d = new Date(today);
+            
+            while (true) {
+                const ds = fmt(d);
+                const done = habitScores[ds]?.[habitId] ? true : false;
+                if (done) {
+                    streak++;
+                    d.setDate(d.getDate() - 1);
+                } else {
+                    if (streak === 0 && isToday(d)) {
+                        d.setDate(d.getDate() - 1);
+                        continue;
+                    }
+                    break;
+                }
+                if (d < START_DATE) break;
+            }
+            return streak;
+        }
+
+        function renderStats() {
+            const body = document.getElementById('statsBody');
+            let html = `<div class="stats-tabs">
+                <button class="stats-tab ${statsTab === 'overview' ? 'active' : ''}" onclick="statsTab='overview';renderStats()">📊 週間</button>
+                <button class="stats-tab ${statsTab === 'monthly' ? 'active' : ''}" onclick="statsTab='monthly';renderStats()">📅 月別</button>
+                <button class="stats-tab ${statsTab === 'graph' ? 'active' : ''}" onclick="statsTab='graph';renderStats()">📈 推移</button>
+                <button class="stats-tab ${statsTab === 'goal' ? 'active' : ''}" onclick="statsTab='goal';renderStats()">🎯 目標</button>
+            </div>`;
+
+            if (statsTab === 'overview') {
+                html += renderWeeklyOverview();
+            } else if (statsTab === 'monthly') {
+                html += renderMonthlyStats();
+            } else if (statsTab === 'graph') {
+                html += renderGraphStats();
+            } else if (statsTab === 'goal') {
+                html += renderGoalSettings();
+            }
+
+            body.innerHTML = html;
+        }
+
+        function renderWeeklyOverview() {
+            const today = new Date();
+            const weekStart = getWeekStart(today);
+            let html = '';
+            
+            // ストリーク表示
+            const streak = calculateStreak();
+            const streakEmoji = streak >= 7 ? '🔥' : streak >= 3 ? '⭐' : '💪';
+            html += `<div class="streak-banner">
+                <div class="streak-emoji">${streakEmoji}</div>
+                <div class="streak-info">
+                    <div class="streak-label">連続記録日数</div>
+                    <div class="streak-value">${streak}<span>日</span></div>
+                </div>
+            </div>`;
+            
+            // 今週のスコア集計
+            // 昼: 入力がある日だけで平均（土日祝など休みの日は除外）
+            // 夜: 全日で平均
+            let dayTotal = 0, nightTotal = 0, dayCount = 0, totalDays = 0;
+            const weekData = [];
+            for (let i = 0; i < 7; i++) {
+                const d = new Date(weekStart);
+                d.setDate(weekStart.getDate() + i);
+                if (d > today) break;
+                totalDays++;
+                const ds = fmt(d);
+                const scores = getDayNightScores(ds);
+                weekData.push({ date: d, day: scores.day, night: scores.night });
+                if (scores.day > 0) { dayTotal += scores.day; dayCount++; }
+                nightTotal += scores.night; // 夜は0でもカウント
+            }
+            
+            const dayAvg = dayCount > 0 ? Math.round(dayTotal / dayCount) : 0;
+            const nightAvg = totalDays > 0 ? Math.round(nightTotal / totalDays) : 0;
+            const dayPct = Math.round((dayAvg / 100) * 100);
+            const nightPct = Math.round((nightAvg / 100) * 100);
+            
+            // 目標達成率
+            const dayGoalPct = Math.min(100, Math.round((dayAvg / weeklyGoal.day) * 100));
+            const nightGoalPct = Math.min(100, Math.round((nightAvg / weeklyGoal.night) * 100));
+            
+            html += `<div class="week-summary">
+                <div class="week-score-card day">
+                    <div class="week-score-label">☀️ 昼の仕事</div>
+                    <div class="week-score-value">${dayAvg}<span>/100</span></div>
+                    <div class="week-score-bar"><div class="week-score-fill" style="width:${dayPct}%;background:${getScoreColor(dayAvg)}"></div></div>
+                    <div class="week-score-goal ${dayGoalPct >= 100 ? 'achieved' : ''}">目標${weeklyGoal.day}点: ${dayGoalPct}%達成</div>
+                </div>
+                <div class="week-score-card night">
+                    <div class="week-score-label">🌙 夜の仕事</div>
+                    <div class="week-score-value">${nightAvg}<span>/100</span></div>
+                    <div class="week-score-bar"><div class="week-score-fill" style="width:${nightPct}%;background:${getScoreColor(nightAvg)}"></div></div>
+                    <div class="week-score-goal ${nightGoalPct >= 100 ? 'achieved' : ''}">目標${weeklyGoal.night}点: ${nightGoalPct}%達成</div>
+                </div>
+            </div>`;
+            
+            // 今週の日別グラフ
+            html += `<h4 class="stats-section-title">📊 今週の推移</h4>`;
+            html += `<div class="week-chart">
+                ${weekData.map((w, i) => {
+                    const dayName = DAY_NAMES[w.date.getDay()];
+                    const isTd = isToday(w.date);
+                    return `<div class="week-chart-day ${isTd ? 'today' : ''}">
+                        <div class="week-chart-bars">
+                            <div class="week-chart-bar day" style="height:${Math.max(w.day, 2)}%;background:${getScoreColor(w.day)}"></div>
+                            <div class="week-chart-bar night" style="height:${Math.max(w.night, 2)}%;background:${getScoreColor(w.night)}"></div>
+                        </div>
+                        <div class="week-chart-label">${dayName}</div>
+                    </div>`;
+                }).join('')}
+            </div>`;
+            
+            // 習慣達成率
+            html += `<h4 class="stats-section-title">✅ 習慣達成率（今週）</h4>`;
+            const habitStats = habits.map(h => {
+                let done = 0;
+                for (let i = 0; i < 7; i++) {
+                    const d = new Date(weekStart);
+                    d.setDate(weekStart.getDate() + i);
+                    if (d > today) break;
+                    if (habitScores[fmt(d)]?.[h.id]) done++;
+                }
+                const streak = calculateHabitStreak(h.id);
+                const pct = Math.round((done / Math.min(7, weekData.length)) * 100);
+                return { ...h, done, pct, streak };
+            });
+            
+            html += habitStats.map(h => `<div class="habit-stat-row">
+                <div class="habit-stat-emoji">${h.emoji}</div>
+                <div class="habit-stat-content">
+                    <div class="habit-stat-name-row">
+                        <span>${h.name}</span>
+                        ${h.streak >= 3 ? `<span class="habit-streak-badge">🔥${h.streak}日</span>` : ''}
+                    </div>
+                    <div class="habit-stat-bar"><div class="habit-stat-bar-fill" style="width:${h.pct}%;background:${h.pct >= 80 ? '#86efac' : h.pct >= 50 ? '#fef08a' : '#fecaca'};"></div></div>
+                </div>
+                <div class="habit-stat-pct">${h.pct}%</div>
+            </div>`).join('');
+            
+            return html;
+        }
+
+        function renderMonthlyStats() {
+            const { year, month } = statsMonth;
+            const dim = new Date(year, month + 1, 0).getDate();
+            const today = new Date();
+            let html = '';
+            
+            html += `<div class="month-selector">
+                <button class="month-nav" onclick="statsMonth.month--;if(statsMonth.month<0){statsMonth.month=11;statsMonth.year--;}renderStats()">◀</button>
+                <span class="month-label">${year}年 ${month + 1}月</span>
+                <button class="month-nav" onclick="statsMonth.month++;if(statsMonth.month>11){statsMonth.month=0;statsMonth.year++;}renderStats()">▶</button>
+            </div>`;
+            
+            // 月間スコア集計
+            // 昼: 入力がある日だけで平均
+            // 夜: 全日で平均
+            let dayTotal = 0, nightTotal = 0, dayCount = 0, totalDays = 0;
+            for (let d = 1; d <= dim; d++) {
+                const date = new Date(year, month, d);
+                if (date > today || date < START_DATE) continue;
+                totalDays++;
+                const ds = fmt(date);
+                const scores = getDayNightScores(ds);
+                if (scores.day > 0) { dayTotal += scores.day; dayCount++; }
+                nightTotal += scores.night; // 夜は0でもカウント
+            }
+            
+            const dayAvg = dayCount > 0 ? Math.round(dayTotal / dayCount) : 0;
+            const nightAvg = totalDays > 0 ? Math.round(nightTotal / totalDays) : 0;
+            
+            html += `<div class="month-summary">
+                <div class="month-score-item">
+                    <div class="month-score-label">☀️ 昼平均</div>
+                    <div class="month-score-value" style="background:${getScoreColor(dayAvg)}">${dayAvg}</div>
+                    <div class="month-score-sub">${dayCount}日稼働</div>
+                </div>
+                <div class="month-score-item">
+                    <div class="month-score-label">🌙 夜平均</div>
+                    <div class="month-score-value" style="background:${getScoreColor(nightAvg)}">${nightAvg}</div>
+                    <div class="month-score-sub">${totalDays}日中</div>
+                </div>
+            </div>`;
+            
+            // 習慣月間達成率
+            html += `<h4 class="stats-section-title">✅ 習慣達成率（${month + 1}月）</h4>`;
+            let activeDays = 0;
+            for (let d = 1; d <= dim; d++) {
+                const date = new Date(year, month, d);
+                if (date <= today && date >= START_DATE) activeDays++;
+            }
+            
+            const hStats = habits.map(h => {
+                let done = 0;
+                for (let d = 1; d <= dim; d++) {
+                    const date = new Date(year, month, d);
+                    if (date > today || date < START_DATE) continue;
+                    if (habitScores[fmt(date)]?.[h.id]) done++;
+                }
+                const pct = activeDays > 0 ? Math.round((done / activeDays) * 100) : 0;
+                return { ...h, done, pct, total: activeDays };
+            });
+            
+            html += hStats.map(h => `<div class="habit-stat-row">
+                <div class="habit-stat-emoji">${h.emoji}</div>
+                <div class="habit-stat-content">
+                    <div class="habit-stat-name-row"><span>${h.name}</span></div>
+                    <div class="habit-stat-bar"><div class="habit-stat-bar-fill" style="width:${h.pct}%;background:${h.pct >= 80 ? '#86efac' : h.pct >= 50 ? '#fef08a' : '#fecaca'};"></div></div>
+                </div>
+                <div class="habit-stat-detail">${h.done}/${h.total}日<br>${h.pct}%</div>
+            </div>`).join('');
+            
+            return html;
+        }
+
+        function renderGraphStats() {
+            const today = new Date();
+            let html = '';
+            
+            // 過去4週間のスコア推移
+            html += `<h4 class="stats-section-title">📈 過去4週間のスコア推移</h4>`;
+            const weeksData = [];
+            for (let w = 3; w >= 0; w--) {
+                const weekEnd = new Date(today);
+                weekEnd.setDate(today.getDate() - (w * 7));
+                const weekStart = new Date(weekEnd);
+                weekStart.setDate(weekEnd.getDate() - 6);
+                
+                let dayTotal = 0, nightTotal = 0, dayCount = 0, totalDays = 0;
+                for (let i = 0; i < 7; i++) {
+                    const d = new Date(weekStart);
+                    d.setDate(weekStart.getDate() + i);
+                    if (d > today || d < START_DATE) continue;
+                    totalDays++;
+                    const scores = getDayNightScores(fmt(d));
+                    if (scores.day > 0) { dayTotal += scores.day; dayCount++; }
+                    nightTotal += scores.night;
+                }
+                
+                weeksData.push({
+                    label: w === 0 ? '今週' : `${w}週前`,
+                    dayAvg: dayCount > 0 ? Math.round(dayTotal / dayCount) : 0,
+                    nightAvg: totalDays > 0 ? Math.round(nightTotal / totalDays) : 0
+                });
+            }
+            
+            html += `<div class="weeks-chart">
+                ${weeksData.map(w => `<div class="weeks-chart-item">
+                    <div class="weeks-chart-bars">
+                        <div class="weeks-bar day" style="height:${w.dayAvg}%;background:${getScoreColor(w.dayAvg)}"><span>${w.dayAvg}</span></div>
+                        <div class="weeks-bar night" style="height:${w.nightAvg}%;background:${getScoreColor(w.nightAvg)}"><span>${w.nightAvg}</span></div>
+                    </div>
+                    <div class="weeks-chart-label">${w.label}</div>
+                </div>`).join('')}
+            </div>
+            <div class="chart-legend">
+                <span class="legend-item"><span class="legend-dot day"></span>昼</span>
+                <span class="legend-item"><span class="legend-dot night"></span>夜</span>
+            </div>`;
+            
+            // 過去6ヶ月の推移
+            html += `<h4 class="stats-section-title">📊 過去6ヶ月の推移</h4>`;
+            const monthsData = [];
+            for (let i = 5; i >= 0; i--) {
+                const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+                const yr = d.getFullYear(), mo = d.getMonth();
+                const dim = new Date(yr, mo + 1, 0).getDate();
+                let dayTotal = 0, nightTotal = 0, dayCount = 0, totalDays = 0;
+                
+                for (let day = 1; day <= dim; day++) {
+                    const date = new Date(yr, mo, day);
+                    if (date > today || date < START_DATE) continue;
+                    totalDays++;
+                    const scores = getDayNightScores(fmt(date));
+                    if (scores.day > 0) { dayTotal += scores.day; dayCount++; }
+                    nightTotal += scores.night;
+                }
+                
+                monthsData.push({
+                    label: `${mo + 1}月`,
+                    dayAvg: dayCount > 0 ? Math.round(dayTotal / dayCount) : 0,
+                    nightAvg: totalDays > 0 ? Math.round(nightTotal / totalDays) : 0
+                });
+            }
+            
+            html += `<div class="months-chart">
+                ${monthsData.map(m => `<div class="months-chart-item">
+                    <div class="months-chart-bars">
+                        <div class="months-bar day" style="height:${m.dayAvg}%;background:${getScoreColor(m.dayAvg)}"></div>
+                        <div class="months-bar night" style="height:${m.nightAvg}%;background:${getScoreColor(m.nightAvg)}"></div>
+                    </div>
+                    <div class="months-chart-values">
+                        <span class="day-val">${m.dayAvg}</span>
+                        <span class="night-val">${m.nightAvg}</span>
+                    </div>
+                    <div class="months-chart-label">${m.label}</div>
+                </div>`).join('')}
+            </div>`;
+            
+            return html;
+        }
+
+        function renderGoalSettings() {
+            let html = '';
+            
+            html += `<div class="goal-setting">
+                <h4 class="stats-section-title">🎯 週間目標スコアの設定</h4>
+                <p class="goal-desc">週の平均スコア目標を設定して、達成を目指しましょう！</p>
+                
+                <div class="goal-input-group">
+                    <label class="goal-label">☀️ 昼の仕事 目標</label>
+                    <div class="goal-input-row">
+                        <input type="range" min="10" max="100" step="5" value="${weeklyGoal.day}" 
+                               onchange="weeklyGoal.day=parseInt(this.value);document.getElementById('dayGoalVal').textContent=this.value;saveGoal();">
+                        <span class="goal-value" id="dayGoalVal">${weeklyGoal.day}</span>
+                    </div>
+                </div>
+                
+                <div class="goal-input-group">
+                    <label class="goal-label">🌙 夜の仕事 目標</label>
+                    <div class="goal-input-row">
+                        <input type="range" min="10" max="100" step="5" value="${weeklyGoal.night}" 
+                               onchange="weeklyGoal.night=parseInt(this.value);document.getElementById('nightGoalVal').textContent=this.value;saveGoal();">
+                        <span class="goal-value" id="nightGoalVal">${weeklyGoal.night}</span>
+                    </div>
+                </div>
+            </div>`;
+            
+            // 達成バッジ
+            const streak = calculateStreak();
+            html += `<h4 class="stats-section-title">🏆 達成バッジ</h4>`;
+            html += `<div class="badges-grid">
+                <div class="badge-item ${streak >= 3 ? 'earned' : ''}">
+                    <div class="badge-icon">🔥</div>
+                    <div class="badge-name">3日連続</div>
+                    ${streak >= 3 ? '<div class="badge-check">✓</div>' : ''}
+                </div>
+                <div class="badge-item ${streak >= 7 ? 'earned' : ''}">
+                    <div class="badge-icon">⭐</div>
+                    <div class="badge-name">1週間</div>
+                    ${streak >= 7 ? '<div class="badge-check">✓</div>' : ''}
+                </div>
+                <div class="badge-item ${streak >= 14 ? 'earned' : ''}">
+                    <div class="badge-icon">🌟</div>
+                    <div class="badge-name">2週間</div>
+                    ${streak >= 14 ? '<div class="badge-check">✓</div>' : ''}
+                </div>
+                <div class="badge-item ${streak >= 30 ? 'earned' : ''}">
+                    <div class="badge-icon">👑</div>
+                    <div class="badge-name">1ヶ月</div>
+                    ${streak >= 30 ? '<div class="badge-check">✓</div>' : ''}
+                </div>
+            </div>`;
+            
+            return html;
+        }
+
+        function saveGoal() {
+            localStorage.setItem('weekly_goal_v2', JSON.stringify(weeklyGoal));
+        }
+
+        // ===== 確認ダイアログ =====
+        function showConfirm(title, msg, btnTxt, btnClass, cb) { 
+            document.getElementById('confirmTitle').textContent = title; 
+            document.getElementById('confirmMsg').textContent = msg; 
+            document.getElementById('confirmOk').textContent = btnTxt; 
+            document.getElementById('confirmOk').className = 'confirm-btn ' + (btnClass || ''); 
+            confirmCb = cb; 
+            document.getElementById('confirmBack').classList.add('active'); 
+            document.getElementById('confirmDlg').classList.add('active'); 
+        }
+        function closeConfirm() { document.getElementById('confirmBack').classList.remove('active'); document.getElementById('confirmDlg').classList.remove('active'); confirmCb = null; }
+        function execConfirm() { if (confirmCb) confirmCb(); closeConfirm(); }
+    </script>
+</body>
+</html>
