@@ -1159,15 +1159,16 @@
         .habit-btn.diary { background: rgba(245,233,96,0.2); color: #92400e; }
 
         .hidden { display: none !important; }
-        .loading { position: fixed; top: 50px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); color: white; padding: 8px 16px; border-radius: 20px; font-size: 12px; z-index: 2000; display: flex; align-items: center; gap: 8px; }
-        .loading.hidden { display: none; }
-        .spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        .loading-overlay { position: fixed; inset: 0; background: rgba(255,255,255,0.9); z-index: 2000; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; }
+        .loading-overlay.hidden { display: none; }
+        .loading-box { background: rgba(0,0,0,0.8); color: white; padding: 16px 24px; border-radius: 12px; display: flex; align-items: center; gap: 12px; }
+        .spinner { width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
     <div class="app">
-        <div class="loading hidden" id="loading"><div class="spinner"></div><span>同期中...</span></div>
+        <div class="loading-overlay hidden" id="loading"><div class="loading-box"><div class="spinner"></div><span id="loadingText">読込中...</span></div></div>
 
         <div class="main-tabs">
             <button class="main-tab active" onclick="switchTab('todo')">📋 TODO</button>
@@ -1526,9 +1527,11 @@
         let saveTimer = null;
 
         // 静かに同期（ローカルにデータがある場合）
+        // 静かに同期（ローカルにデータがある場合）→ でも操作はブロック
         async function syncFromServerQuiet() {
             isSyncing = true;
-            updateSyncBadge('syncing', '同期中...');
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('loadingText').textContent = '同期中...';
             
             try {
                 const response = await fetch(API_URL + '?action=load');
@@ -1562,6 +1565,7 @@
                 console.error('Sync error:', e);
                 updateSyncBadge('error', 'オフライン');
             } finally {
+                document.getElementById('loading').classList.add('hidden');
                 isSyncing = false;
             }
         }
@@ -1570,7 +1574,7 @@
         async function syncFromServerBlocking() {
             isSyncing = true;
             document.getElementById('loading').classList.remove('hidden');
-            updateSyncBadge('syncing', '読込中...');
+            document.getElementById('loadingText').textContent = '読込中...';
             
             try {
                 const response = await fetch(API_URL + '?action=load');
