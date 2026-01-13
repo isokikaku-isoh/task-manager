@@ -1493,7 +1493,7 @@
             renderHabitTable();
             
             // バックグラウンドでサーバー同期
-            if (API_URL !== 'https://script.google.com/macros/s/AKfycbzEhjAe8yFi2rJxhUtoWoVsN2ehd961yj-J9ZDWGXkNDrdf7sz86JYmhLx8AON-13j-7w/exec') {
+            if (API_URL !== 'YOUR_GAS_API_URL_HERE') {
                 syncFromServer();
             }
             
@@ -1515,7 +1515,7 @@
 
         // ===== ストレージ =====
         // GAS APIのURL（デプロイ後に設定）
-        const API_URL = 'https://script.google.com/macros/s/AKfycbzEhjAe8yFi2rJxhUtoWoVsN2ehd961yj-J9ZDWGXkNDrdf7sz86JYmhLx8AON-13j-7w/exec';
+        const API_URL = 'YOUR_GAS_API_URL_HERE';
         let saveTimer = null;
 
         // サーバーからバックグラウンド同期
@@ -1611,6 +1611,15 @@
         // ===== サーバー同期 =====
         async function syncToServer() {
             if (API_URL === 'YOUR_GAS_API_URL_HERE') return;
+            
+            // 空データは保存しない（データ消失防止）
+            const hasTaskData = Object.keys(tasks).some(col => tasks[col] && tasks[col].length > 0);
+            const hasHabitData = habits && habits.length > 0;
+            
+            if (!hasTaskData && !hasHabitData) {
+                console.log('空データのため保存をスキップ');
+                return;
+            }
             
             updateSyncBadge('syncing', '保存中...');
             
