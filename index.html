@@ -1526,6 +1526,31 @@
         const API_URL = 'https://script.google.com/macros/s/AKfycbyFtn1OxgOQaMPEJzDbIkj0bZTNHj46T3h_9s4AjtQ4GKgMwXh524pt7O8wgNawlKVNLw/exec';
         let saveTimer = null;
 
+        // 個別API呼び出し（差分更新用）
+        async function apiCall(action, data) {
+            try {
+                updateSyncBadge('syncing', '保存中...');
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: JSON.stringify({ action, ...data })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    updateSyncBadge('success', '保存完了');
+                    setTimeout(() => updateSyncBadge('success', '同期済'), 2000);
+                } else {
+                    console.error('API error:', result.error);
+                    updateSyncBadge('error', 'エラー');
+                }
+                return result;
+            } catch(e) {
+                console.error('API call error:', e);
+                updateSyncBadge('error', 'エラー');
+                return { success: false, error: e.toString() };
+            }
+        }
+
         // 静かに同期（ローカルにデータがある場合）→ でも操作はブロック
         async function syncFromServerQuiet() {
             console.log('syncFromServerQuiet() 開始');
@@ -1639,80 +1664,7 @@
                 return;
             }
             
-            console.log('save() 実行: タスク数=' + Object.values(tasks).flat().length);
             saveToLocal();
-            
-            if (saveTimer) clearTimeout(saveTimer);
-            saveTimer = setTimeout(() => {
-                syncToServer();
-            }, 500);
-        }
-
-        // ===== サーバー同期 =====
-        async function syncToServer() {
-            // 同期中は保存しない
-            if (isSyncing) {
-                console.log('syncToServer() スキップ: isSyncing=true');
-                return;
-            }
-            
-            // 空データは保存しない（データ消失防止）
-            const hasTaskData = Object.keys(tasks).some(col => tasks[col] && tasks[col].length > 0);
-            const hasHabitData = habits && habits.length > 0;
-            
-            if (!hasTaskData && !hasHabitData) {
-                console.log('syncToServer() スキップ: 空データ');
-                return;
-            }
-            
-            console.log('syncToServer() 実行: タスク数=' + Object.values(tasks).flat().length);
-            updateSyncBadge('syncing', '保存中...');
-            
-            try {
-                const response = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain' },
-                    body: JSON.stringify({
-                        action: 'save',
-                        tasks: tasks,
-                        columns: columns,
-                        habits: habits,
-                        habitScores: habitScores,
-                        habitNotes: habitNotes,
-                        dailyScores: dailyScores,
-                        settings: { theme: theme }
-                    })
-                });
-                const result = await response.json();
-                
-                if (result.success) {
-                    updateSyncBadge('success', '保存完了');
-                    setTimeout(() => updateSyncBadge('success', '同期済'), 2000);
-                } else {
-                    throw new Error(result.error || 'Save failed');
-                }
-            } catch(e) {
-                console.error('Save error:', e);
-                updateSyncBadge('error', 'エラー');
-            }
-        }
-
-        // 個別保存（リアルタイム同期用）
-        async function saveHabitScore(date, habitId, score) {
-            try {
-                await fetch(API_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain' },
-                    body: JSON.stringify({
-                        action: 'saveHabitScore',
-                        date: date,
-                        habitId: habitId,
-                        score: score
-                    })
-                });
-            } catch(e) {
-                console.error('Score save error:', e);
-            }
         }
 
         function updateSyncBadge(status, text) {
@@ -1765,7 +1717,43 @@
             // モバイルカラム選択を更新
             updateMobileColTabs();
             
-            save();
+            saveToLocal();
+        }
+        
+        // 描画のみ（サーバー保存しない版）
+        function renderKanbanOnly() {
+            const k = document.getElementById('kanban');
+            
+            // スクロール位置を保存
+            const scrollPositions = {};
+            document.querySelectorAll('.task-list').forEach(list => {
+                const col = list.closest('.column')?.dataset.col;
+                if (col) scrollPositions[col] = list.scrollTop;
+            });
+            const kanbanScroll = k.scrollLeft;
+            
+            k.innerHTML = columns.map((c, colIdx) => `
+                <div class="column ${c.id}" data-col="${c.id}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="drop(event,'${c.id}')">
+                    <div class="column-header" style="background:${c.color};color:${txtColor(c.color)}">
+                        <div><span class="column-title">${c.title}</span><span class="column-count">${(tasks[c.id]||[]).length}</span></div>
+                        ${!['todo','doing','done'].includes(c.id) ? `<button class="column-delete" onclick="delColumn('${c.id}')">✕</button>` : ''}
+                    </div>
+                    <div class="task-list">${renderTasks(c.id, colIdx)}</div>
+                </div>
+            `).join('');
+            document.getElementById('taskCount').textContent = Object.values(tasks).flat().length + '件';
+            
+            // スクロール位置を復元
+            document.querySelectorAll('.task-list').forEach(list => {
+                const col = list.closest('.column')?.dataset.col;
+                if (col && scrollPositions[col]) list.scrollTop = scrollPositions[col];
+            });
+            k.scrollLeft = kanbanScroll;
+            
+            // モバイルカラム選択を更新
+            updateMobileColTabs();
+            
+            saveToLocal();
         }
         
         let mobileSelectedCol = 'todo';
@@ -1850,10 +1838,15 @@
                 targetCol = mobileSelectedCol || 'todo';
             }
             
+            const newTask = { id: String(Date.now()), title, important: false, createdAt: new Date().toISOString(), memos: [] };
+            
             if (!tasks[targetCol]) tasks[targetCol] = [];
-            tasks[targetCol].unshift({ id: Date.now(), title, important: false, createdAt: new Date().toISOString(), memos: [] });
-            renderKanban();
+            tasks[targetCol].unshift(newTask);
+            renderKanbanOnly();
             inp.value = ''; btn.disabled = true;
+            
+            // サーバーに追加
+            apiCall('addTask', { task: newTask, columnId: targetCol });
             
             // モバイルの場合は追加後に最小化
             if (t === 'mobile') {
@@ -1971,7 +1964,11 @@
             const task = tasks[fromCol].splice(idx, 1)[0];
             if (!tasks[toCol]) tasks[toCol] = [];
             tasks[toCol].unshift(task); // 一番上に追加
-            renderKanban();
+            renderKanbanOnly();
+            
+            // サーバーに移動を通知
+            apiCall('moveTask', { taskId: id, toColumn: toCol });
+            
             dragEl = null;
             dragFromCol = null;
             dragFromIdx = null;
@@ -1989,7 +1986,10 @@
             const task = tasks[col].splice(idx, 1)[0];
             if (!tasks[prevCol]) tasks[prevCol] = [];
             tasks[prevCol].unshift(task); // 一番上に追加
-            renderKanban();
+            renderKanbanOnly();
+            
+            // サーバーに移動を通知
+            apiCall('moveTask', { taskId: String(id), toColumn: prevCol });
         }
 
         // タスクを次のカラムに移動
@@ -2004,7 +2004,10 @@
             const task = tasks[col].splice(idx, 1)[0];
             if (!tasks[nextCol]) tasks[nextCol] = [];
             tasks[nextCol].unshift(task); // 一番上に追加
-            renderKanban();
+            renderKanbanOnly();
+            
+            // サーバーに移動を通知
+            apiCall('moveTask', { taskId: String(id), toColumn: nextCol });
         }
 
         function toggleStar(id, col) {
@@ -2020,7 +2023,10 @@
                 tasks[col].unshift(t);
             }
             
-            renderKanban();
+            renderKanbanOnly();
+            
+            // サーバーに更新を通知
+            apiCall('updateTask', { task: t, columnId: col });
         }
 
         function confirmComplete(id, col) {
@@ -2028,7 +2034,14 @@
             if (!t) return;
             showConfirm('完了確認', `「${t.title}」を完了にしますか？`, '完了', 'complete', () => {
                 const idx = tasks[col].findIndex(x => String(x.id) === String(id));
-                if (idx !== -1) { const task = tasks[col].splice(idx, 1)[0]; tasks.done.unshift(task); renderKanban(); }
+                if (idx !== -1) { 
+                    const task = tasks[col].splice(idx, 1)[0]; 
+                    tasks.done.unshift(task); 
+                    renderKanbanOnly(); 
+                    
+                    // サーバーに移動を通知
+                    apiCall('moveTask', { taskId: String(id), toColumn: 'done' });
+                }
             });
         }
 
@@ -2066,16 +2079,29 @@
                 }
             }
             
-            renderKanban(); 
+            renderKanbanOnly(); 
+            apiCall('updateTask', { task: currentTask, columnId: currentCol });
         }
-        function saveTitle() { if (!currentTask) return; const v = document.getElementById('titleInput').value.trim(); if (v) { currentTask.title = v; document.getElementById('memoTitle').textContent = v; renderKanban(); } }
+        function saveTitle() { 
+            if (!currentTask) return; 
+            const v = document.getElementById('titleInput').value.trim(); 
+            if (v) { 
+                currentTask.title = v; 
+                document.getElementById('memoTitle').textContent = v; 
+                renderKanbanOnly(); 
+                apiCall('updateTask', { task: currentTask, columnId: currentCol });
+            } 
+        }
         function addMemo() {
             const inp = document.getElementById('memoInput');
             const txt = inp.value.trim();
             if (!txt || !currentTask) return;
             if (!currentTask.memos) currentTask.memos = [];
             currentTask.memos.unshift({ text: txt, timestamp: new Date().toISOString() });
-            renderMemoList(); renderKanban(); inp.value = '';
+            renderMemoList(); 
+            renderKanbanOnly(); 
+            inp.value = '';
+            apiCall('updateTask', { task: currentTask, columnId: currentCol });
         }
 
         function renderMemoList() {
@@ -2089,8 +2115,13 @@
 
         function confirmDelete() {
             showConfirm('削除確認', `「${currentTask.title}」を削除しますか？`, '削除', 'danger', () => {
+                const taskId = currentTask.id;
                 const idx = tasks[currentCol].findIndex(t => t.id === currentTask.id);
-                if (idx !== -1) { tasks[currentCol].splice(idx, 1); renderKanban(); }
+                if (idx !== -1) { 
+                    tasks[currentCol].splice(idx, 1); 
+                    renderKanbanOnly(); 
+                    apiCall('deleteTask', { taskId: String(taskId) });
+                }
                 closeMemoModal();
             });
         }
@@ -2682,7 +2713,8 @@
                 dailyScores[ds] = { day: 0, night: dailyScores[ds] || 0 };
             }
             dailyScores[ds].day = value;
-            save();
+            saveToLocal();
+            apiCall('saveDailyScore', { date: ds, dayScore: dailyScores[ds].day, nightScore: dailyScores[ds].night });
         }
 
         function adjustNightScore(delta) {
@@ -2702,7 +2734,8 @@
                 dailyScores[ds] = { day: 0, night: dailyScores[ds] || 0 };
             }
             dailyScores[ds].night = value;
-            save();
+            saveToLocal();
+            apiCall('saveDailyScore', { date: ds, dayScore: dailyScores[ds].day, nightScore: dailyScores[ds].night });
         }
 
         function saveDiaryNote() {
@@ -2737,7 +2770,9 @@
             } else {
                 habitScores[ds][habitId] = 0;
             }
-            save();
+            saveToLocal();
+            apiCall('saveHabitNote', { date: ds, habitId: String(habitId), note: note });
+            apiCall('saveHabitScore', { date: ds, habitId: String(habitId), score: habitScores[ds][habitId] });
         }
 
         // 習慣チェックのトグル
@@ -2749,8 +2784,8 @@
             habitScores[ds][habitId] = current ? 0 : 1;
             
             // リアルタイム同期
-            saveHabitScore(ds, habitId, habitScores[ds][habitId]);
-            save();
+            saveToLocal();
+            apiCall('saveHabitScore', { date: ds, habitId: String(habitId), score: habitScores[ds][habitId] });
             
             // ボタンだけ更新（全体再描画を避ける）
             const cell = document.getElementById(cellId);
@@ -2810,8 +2845,10 @@
         function addHabit() { 
             const name = document.getElementById('habitNameInput').value.trim(); 
             if (!name) return; 
-            habits.push({ id: Date.now(), name, emoji: selEmoji }); 
-            save(); 
+            const newHabit = { id: String(Date.now()), name, emoji: selEmoji };
+            habits.push(newHabit); 
+            saveToLocal();
+            apiCall('addHabit', { habit: newHabit });
             renderHabitTable(); 
             closeHabitModal(); 
         }
@@ -2838,15 +2875,16 @@
                         <span class="habit-list-emoji">${h.emoji}</span>
                         <span class="habit-list-name">${h.name}</span>
                     </div>
-                    <button class="habit-list-del" onclick="confirmDelHabit(${h.id}, '${esc(h.name)}')">削除</button>
+                    <button class="habit-list-del" onclick="confirmDelHabit('${h.id}', '${esc(h.name)}')">削除</button>
                 </div>
             `).join('');
         }
 
         function confirmDelHabit(id, name) {
             showConfirm('習慣を削除', `「${name}」を削除しますか？\n記録データも削除されます。`, '削除', 'danger', () => {
-                habits = habits.filter(h => h.id !== id);
-                save();
+                habits = habits.filter(h => String(h.id) !== String(id));
+                saveToLocal();
+                apiCall('deleteHabit', { habitId: String(id) });
                 renderHabitTable();
                 renderHabitManageList();
             });
