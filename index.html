@@ -1483,7 +1483,7 @@
         let statsTab = 'overview';
         let confirmCb = null;
         let diaryDate = new Date(); // 日記の現在表示日
-        let isSyncing = false; // 同期中フラグ
+        let isSyncing = true; // 同期中フラグ（初期化時はtrue）
 
         // ===== 初期化 =====
         document.addEventListener('DOMContentLoaded', () => {
@@ -1652,6 +1652,12 @@
 
         // ===== サーバー同期 =====
         async function syncToServer() {
+            // 同期中は保存しない
+            if (isSyncing) {
+                console.log('同期中のため保存スキップ');
+                return;
+            }
+            
             // 空データは保存しない（データ消失防止）
             const hasTaskData = Object.keys(tasks).some(col => tasks[col] && tasks[col].length > 0);
             const hasHabitData = habits && habits.length > 0;
