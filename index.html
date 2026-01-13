@@ -1493,9 +1493,7 @@
             renderHabitTable();
             
             // バックグラウンドでサーバー同期
-            if (API_URL !== 'https://script.google.com/macros/s/AKfycbyFtn1OxgOQaMPEJzDbIkj0bZTNHj46T3h_9s4AjtQ4GKgMwXh524pt7O8wgNawlKVNLw/exec') {
-                syncFromServer();
-            }
+            syncFromServer();
             
             setTimeout(scrollToToday, 200);
             
@@ -1520,11 +1518,6 @@
 
         // サーバーからバックグラウンド同期
         async function syncFromServer() {
-            if (API_URL === 'https://script.google.com/macros/s/AKfycbyFtn1OxgOQaMPEJzDbIkj0bZTNHj46T3h_9s4AjtQ4GKgMwXh524pt7O8wgNawlKVNLw/exec') {
-                console.log('API URLが未設定です');
-                return;
-            }
-            
             document.getElementById('loading').classList.remove('hidden');
             updateSyncBadge('syncing', '同期中...');
             
@@ -1537,40 +1530,34 @@
                     const serverHasTaskData = data.tasks && Object.keys(data.tasks).some(col => data.tasks[col] && data.tasks[col].length > 0);
                     const serverHasHabitData = data.habits && data.habits.length > 0;
                     
-                    // ローカルにデータがあるか確認
-                    const localHasTaskData = Object.keys(tasks).some(col => tasks[col] && tasks[col].length > 0);
-                    const localHasHabitData = habits && habits.length > 0;
-                    
-                    // サーバーが空でローカルにデータがある場合は、ローカルを優先してサーバーに保存
-                    if (!serverHasTaskData && !serverHasHabitData && (localHasTaskData || localHasHabitData)) {
-                        console.log('サーバーが空、ローカルデータをサーバーに保存');
-                        updateSyncBadge('syncing', '復元中...');
-                        await syncToServer();
-                        return;
-                    }
-                    
-                    let needsRender = false;
-                    if (data.tasks && JSON.stringify(data.tasks) !== JSON.stringify(tasks)) {
-                        tasks = data.tasks;
-                        needsRender = true;
-                    }
-                    if (data.columns && data.columns.length > 0) columns = data.columns;
-                    if (data.habits && JSON.stringify(data.habits) !== JSON.stringify(habits)) {
-                        habits = data.habits;
-                        needsRender = true;
-                    }
-                    if (data.habitScores) habitScores = data.habitScores;
-                    if (data.habitNotes) habitNotes = data.habitNotes;
-                    if (data.dailyScores) dailyScores = data.dailyScores;
-                    if (data.settings && data.settings.theme) theme = data.settings.theme;
-                    
-                    if (needsRender) {
+                    // サーバーにデータがあれば、サーバーを優先
+                    if (serverHasTaskData || serverHasHabitData) {
+                        tasks = data.tasks || {};
+                        if (data.columns && data.columns.length > 0) columns = data.columns;
+                        habits = data.habits || [];
+                        habitScores = data.habitScores || {};
+                        habitNotes = data.habitNotes || {};
+                        dailyScores = data.dailyScores || {};
+                        if (data.settings && data.settings.theme) theme = data.settings.theme;
+                        
                         applyTheme();
                         renderKanban();
                         renderHabitTable();
+                        saveToLocal();
+                        updateSyncBadge('success', '同期完了');
+                    } else {
+                        // サーバーが空の場合、ローカルにデータがあればサーバーに保存
+                        const localHasTaskData = Object.keys(tasks).some(col => tasks[col] && tasks[col].length > 0);
+                        const localHasHabitData = habits && habits.length > 0;
+                        
+                        if (localHasTaskData || localHasHabitData) {
+                            console.log('サーバーが空、ローカルデータをサーバーに保存');
+                            updateSyncBadge('syncing', '復元中...');
+                            await syncToServer();
+                        } else {
+                            updateSyncBadge('success', '同期完了');
+                        }
                     }
-                    saveToLocal();
-                    updateSyncBadge('success', '同期完了');
                 } else {
                     throw new Error(data.error || 'Load failed');
                 }
@@ -1616,18 +1603,14 @@
         function save() {
             saveToLocal();
             
-            if (API_URL !== 'YOUR_GAS_API_URL_HERE') {
-                if (saveTimer) clearTimeout(saveTimer);
-                saveTimer = setTimeout(() => {
-                    syncToServer();
-                }, 500);
-            }
+            if (saveTimer) clearTimeout(saveTimer);
+            saveTimer = setTimeout(() => {
+                syncToServer();
+            }, 500);
         }
 
         // ===== サーバー同期 =====
         async function syncToServer() {
-            if (API_URL === 'YOUR_GAS_API_URL_HERE') return;
-            
             // 空データは保存しない（データ消失防止）
             const hasTaskData = Object.keys(tasks).some(col => tasks[col] && tasks[col].length > 0);
             const hasHabitData = habits && habits.length > 0;
@@ -1670,8 +1653,6 @@
 
         // 個別保存（リアルタイム同期用）
         async function saveHabitScore(date, habitId, score) {
-            if (API_URL === 'https://script.google.com/macros/s/AKfycbyFtn1OxgOQaMPEJzDbIkj0bZTNHj46T3h_9s4AjtQ4GKgMwXh524pt7O8wgNawlKVNLw/exec') return;
-            
             try {
                 await fetch(API_URL, {
                     method: 'POST',
